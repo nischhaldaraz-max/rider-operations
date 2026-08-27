@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Rider Operations</title>
+<script src="https://unpkg.com/@aspect-build/rules_lint@0.0.0-20240313-aspect-zxing-wasm/dist/zxing-wasm.min.js"
+        onerror="console.warn('ZXing WASM CDN unavailable, fallback to BarcodeDetector')"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root { --primary: #1a73e8; --primary-dark: #1557b0; --success: #0f9d58; --error: #d93025; --bg: #f8f9fa; --card: #ffffff; --text: #202124; --text-secondary: #5f6368; --border: #dadce0; --overlay: rgba(0,0,0,0.5); --radius: 12px; --shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08); }
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+.header { position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--primary); color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
+.header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.3px; }
+.hamburger { background: none; border: none; color: #fff; font-size: 26px; cursor: pointer; padding: 4px 8px; line-height: 1; }
+.menu-overlay { display: none; position: fixed; inset: 0; z-index: 200; background: var(--overlay); }
+.menu-overlay.open { display: block; }
+.side-menu { position: fixed; top: 0; left: -280px; z-index: 201; width: 280px; height: 100%; background: var(--card); box-shadow: 2px 0 12px rgba(0,0,0,0.15); transition: left 0.25s ease; display: flex; flex-direction: column; }
+.side-menu.open { left: 0; }
+.menu-header { padding: 20px 16px; background: var(--primary); color: #fff; font-size: 16px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+.menu-close { background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; }
+.menu-items { list-style: none; padding: 8px 0; flex: 1; overflow-y: auto; }
+.menu-items li { padding: 14px 20px; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); transition: background 0.15s; }
+.menu-items li:hover, .menu-items li:active { background: #f1f3f4; }
+.menu-items li.active { background: #e8f0fe; color: var(--primary); font-weight: 600; }
+.menu-items li.disabled { color: #9aa0a6; cursor: default; }
+.menu-items li .badge { margin-left: auto; font-size: 11px; background: #e8eaed; color: var(--text-secondary); padding: 2px 8px; border-radius: 10px; }
+.page { display: none; padding: 16px; padding-bottom: 80px; }
+.page.active { display: block; }
+.home-hero { text-align: center; padding: 48px 20px; }
+.home-hero .icon { font-size: 56px; margin-bottom: 16px; }
+.home-hero h2 { font-size: 22px; margin-bottom: 8px; }
+.home-hero p { color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
+.card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-bottom: 16px; }
+.card h3 { font-size: 16px; margin-bottom: 16px; color: var(--text); }
+.form-group { margin-bottom: 18px; }
+.form-group label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 12px 14px; font-size: 16px; border: 1.5px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); transition: border-color 0.2s; -webkit-appearance: none; appearance: none; }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(26,115,232,0.15); }
+.form-group textarea { min-height: 100px; resize: vertical; font-family: inherit; }
+.form-group select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235f6368' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+.form-group .hint { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+.input-row { display: flex; gap: 8px; }
+.input-row input { flex: 1; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 20px; font-size: 16px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: background 0.2s, transform 0.1s, opacity 0.2s; width: 100%; }
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-secondary { background: #e8f0fe; color: var(--primary); }
+.btn-secondary:hover { background: #d2e3fc; }
+.btn-submit { background: var(--success); color: #fff; font-size: 18px; padding: 16px; margin-top: 8px; }
+.btn-submit:hover { background: #0b8a4a; }
+.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.scanner-overlay { display: none; position: fixed; inset: 0; z-index: 300; background: #000; flex-direction: column; }
+.scanner-overlay.open { display: flex; }
+.scanner-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; color: #fff; z-index: 2; }
+.scanner-header h3 { font-size: 16px; font-weight: 500; }
+.scanner-close { background: none; border: none; color: #fff; font-size: 28px; cursor: pointer; }
+.scanner-video-wrap { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.scanner-video-wrap video { width: 100%; height: 100%; object-fit: cover; }
+.scanner-reticle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 260px; height: 140px; border: 2px solid rgba(255,255,255,0.7); border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.4); }
+.scanner-reticle::after { content: ''; position: absolute; left: 8px; right: 8px; top: 50%; height: 2px; background: var(--primary); animation: scanLine 1.8s ease-in-out infinite; }
+@keyframes scanLine { 0%, 100% { transform: translateY(-30px); opacity: 0.5; } 50% { transform: translateY(30px); opacity: 1; } }
+.scanner-hint { text-align: center; color: #fff; padding: 16px; font-size: 14px; opacity: 0.8; }
+.scanner-status { text-align: center; color: #ff0; padding: 8px; font-size: 13px; min-height: 32px; }
+.toast { position: fixed; bottom: 24px; left: 16px; right: 16px; padding: 14px 18px; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 500; z-index: 500; transform: translateY(100px); opacity: 0; transition: transform 0.3s, opacity 0.3s; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.success { background: var(--success); }
+.toast.error { background: var(--error); }
+.toast.info { background: var(--primary); }
+.spinner { display: inline-block; width: 20px; height: 20px; border: 2.5px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.form-group.error input, .form-group.error select { border-color: var(--error); background: #fce8e6; }
+.error-msg { color: var(--error); font-size: 12px; margin-top: 4px; display: none; }
+.form-group.error .error-msg { display: block; }
+.otp-result { display: none; border-radius: var(--radius); padding: 24px 20px; margin-top: 16px; text-align: center; }
+.otp-result.show { display: block; }
+.otp-result .otp-icon { font-size: 48px; margin-bottom: 12px; }
+.otp-result .otp-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.otp-result .otp-msg { font-size: 14px; line-height: 1.5; }
+.otp-result.success { background: #e6f4ea; border: 2px solid var(--success); }
+.otp-result.success .otp-title { color: var(--success); }
+.otp-result.failure { background: #fce8e6; border: 2px solid var(--error); }
+.otp-result.failure .otp-title { color: var(--error); }
+.btn-verify { background: var(--primary); color: #fff; font-size: 18px; padding: 16px; margin-top: 8px; }
+.btn-verify:hover { background: var(--primary-dark); }
+.btn-verify:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.btn-verify.verified { background: var(--success); }
+.btn-verify.verified:hover { background: var(--success); }
+.btn-reset { background: #e8eaed; color: var(--text); font-size: 14px; padding: 12px; margin-top: 10px; }
+.btn-reset:hover { background: #dadce0; }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <button class="hamburger" id="btnMenuOpen">&#9776;</button>
+  <h1>RIDER OPERATIONS</h1>
+  <span></span>
+</header>
+
+<div class="menu-overlay" id="menuOverlay"></div>
+<nav class="side-menu" id="sideMenu">
+  <div class="menu-header">
+    Menu
+    <button class="menu-close" id="btnMenuClose">&times;</button>
+  </div>
+  <ul class="menu-items">
+    <li data-page="pageStatus">&#x1F4E6; Package Status</li>
+    <li data-page="pageOtp">&#x1F510; ATM OTP Verification</li>
+    <li class="disabled">&#x1F3CD;&#xFE0F; Rider Odometer <span class="badge">Coming Soon</span></li>
+  </ul>
+</nav>
+
+<div class="page active" id="pageHome">
+  <div class="home-hero">
+    <div class="icon">&#x1F3CD;&#xFE0F;</div>
+    <h2 id="homeGreeting">Welcome, Rider</h2>
+    <p>Set up your profile to get started.</p>
+  </div>
+  <div class="card">
+    <h3>&#x1F464; Rider Profile</h3>
+    <div class="form-group" id="grpHub">
+      <label>Hub</label>
+      <select id="hubSelect"><option value="">-- Select hub --</option></select>
+      <div class="error-msg">Please select your hub</div>
+    </div>
+    <div class="form-group" id="grpRiderName">
+      <label>Name</label>
+      <input type="text" id="riderName" placeholder="Please enter your name">
+      <div class="error-msg">Please enter your name</div>
+    </div>
+    <button class="btn btn-primary" id="btnSaveProfile">SAVE PROFILE</button>
+    <div class="hint" id="profileSavedHint" style="display:none;">&#x2713; Profile saved on this device</div>
+  </div>
+</div>
+
+<div class="page" id="pageStatus">
+  <div class="card">
+    <h3>&#x1F4E6; Tracking Number</h3>
+    <div class="form-group" id="grpTracking">
+      <label>Tracking Number</label>
+      <div class="input-row">
+        <input type="text" id="trackingNumber" placeholder="Please enter a tracking number" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <button class="btn btn-secondary" id="btnScan" style="width:auto; white-space:nowrap; padding:12px 16px;">&#x1F4F7; Scan</button>
+      </div>
+      <div class="error-msg">Please enter a tracking number</div>
+    </div>
+    <div class="form-group" id="grpStatus">
+      <label>Status</label>
+      <select id="statusSelect"><option value="">-- Select status --</option></select>
+      <div class="error-msg">Please select a status</div>
+    </div>
+    <div class="form-group" id="grpRemarks">
+      <label>Remarks</label>
+      <textarea id="remarks" placeholder="Enter remarks (required)"></textarea>
+      <div class="error-msg">Please enter remarks</div>
+    </div>
+    <button class="btn btn-submit" id="btnSubmit">SUBMIT</button>
+  </div>
+</div>
+
+<div class="page" id="pageOtp">
+  <div class="card">
+    <h3>&#x1F510; ATM OTP Verification</h3>
+    <div class="form-group" id="grpOtpTracking">
+      <label>Tracking Number</label>
+      <div class="input-row">
+        <input type="text" id="otpTrackingNumber" placeholder="Enter or scan tracking number" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <button class="btn btn-secondary" id="btnOtpScan" style="width:auto; white-space:nowrap; padding:12px 16px;">&#x1F4F7; Scan</button>
+      </div>
+      <div class="error-msg">Please enter a tracking number</div>
+    </div>
+    <div class="form-group" id="grpOtpCode">
+      <label>Customer OTP</label>
+      <input type="tel" id="otpCode" placeholder="Enter Customer OTP" inputmode="numeric" pattern="[0-9]*" maxlength="10" autocomplete="off">
+      <div class="error-msg">Please enter the OTP</div>
+    </div>
+    <button class="btn btn-verify" id="btnVerifyOtp">VERIFY OTP</button>
+    <div class="otp-result" id="otpResult">
+      <div class="otp-icon" id="otpResultIcon"></div>
+      <div class="otp-title" id="otpResultTitle"></div>
+      <div class="otp-msg" id="otpResultMsg"></div>
+    </div>
+    <button class="btn btn-reset" id="btnOtpReset" style="display:none;">Verify Another Package</button>
+  </div>
+</div>
+
+<div class="scanner-overlay" id="scannerOverlay">
+  <div class="scanner-header">
+    <h3>Scan Barcode</h3>
+    <button class="scanner-close" id="btnScanClose">&times;</button>
+  </div>
+  <div class="scanner-video-wrap">
+    <video id="scannerVideo" autoplay playsinline muted></video>
+    <div class="scanner-reticle"></div>
+  </div>
+  <div class="scanner-status" id="scannerStatus">Point camera at a barcode</div>
+  <div class="scanner-hint">Align the barcode within the frame</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRH7DzTUeSWp-BCcxNAJE3T2sikGKZuoYnjSTBHUxNaz-vTpLih0MyWMV5LTkijepD/exec';
+const STATUS_OPTIONS = ['Delivered','Customer Not Available','Customer Rejected','Rescheduled','Failed','Other'];
+const HUB_OPTIONS = ['THA','BB1','BLJ','SOL','SAL','GKH','POK','BUT','NGH','BRT','JNK','BTM','BRJ','DHG','BWA'];
+const RIDER_PROFILE_KEY = 'riderProfile';
+
+const $ = id => document.getElementById(id);
+const menuOverlay = $('menuOverlay'), sideMenu = $('sideMenu');
+const pages = document.querySelectorAll('.page');
+const menuItems = document.querySelectorAll('.menu-items li[data-page]');
+const trackingInput = $('trackingNumber'), statusSelect = $('statusSelect'), remarksInput = $('remarks'), btnSubmit = $('btnSubmit');
+const hubSelect = $('hubSelect'), riderNameInput = $('riderName'), btnSaveProfile = $('btnSaveProfile');
+const profileSavedHint = $('profileSavedHint'), homeGreeting = $('homeGreeting');
+const otpTrackingInput = $('otpTrackingNumber'), otpCodeInput = $('otpCode'), btnVerifyOtp = $('btnVerifyOtp');
+const otpResult = $('otpResult'), otpResultIcon = $('otpResultIcon'), otpResultTitle = $('otpResultTitle'), otpResultMsg = $('otpResultMsg');
+const btnOtpReset = $('btnOtpReset');
+const scannerOverlay = $('scannerOverlay'), scannerVideo = $('scannerVideo'), scannerStatus = $('scannerStatus');
+const toastEl = $('toast');
+
+(function init() {
+  STATUS_OPTIONS.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; statusSelect.appendChild(o); });
+  HUB_OPTIONS.forEach(h => { const o = document.createElement('option'); o.value = h; o.textContent = h; hubSelect.appendChild(o); });
+  const p = getRiderProfile();
+  if (p) { hubSelect.value = p.hub || ''; riderNameInput.value = p.name || ''; showProfileSaved(p.name); }
+})();
+
+function openMenu() { menuOverlay.classList.add('open'); sideMenu.classList.add('open'); }
+function closeMenu() { menuOverlay.classList.remove('open'); sideMenu.classList.remove('open'); }
+function navigateTo(pid) { pages.forEach(p => p.classList.remove('active')); const t = $(pid); if (t) t.classList.add('active'); menuItems.forEach(li => li.classList.toggle('active', li.dataset.page === pid)); closeMenu(); }
+$('btnMenuOpen').addEventListener('click', openMenu);
+$('btnMenuClose').addEventListener('click', closeMenu);
+menuOverlay.addEventListener('click', e => { if (e.target === menuOverlay) closeMenu(); });
+menuItems.forEach(li => { li.addEventListener('click', () => { if (li.classList.contains('disabled')) { showToast('This feature is coming soon','info'); return; } navigateTo(li.dataset.page); }); });
+
+let toastTimer = null;
+function showToast(msg, type, duration) { type = type || 'info'; duration = duration || 3500; toastEl.textContent = msg; toastEl.className = 'toast ' + type; void toastEl.offsetWidth; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), duration); }
+
+function getRiderProfile() { try { const r = localStorage.getItem(RIDER_PROFILE_KEY); if (!r) return null; const p = JSON.parse(r); return (p && p.hub && p.name) ? p : null; } catch(e) { return null; } }
+function showProfileSaved(n) { profileSavedHint.style.display = 'block'; homeGreeting.textContent = 'Welcome, ' + n; }
+function saveRiderProfile() { const h = hubSelect.value, n = riderNameInput.value.trim(); let v = true; if (!h) { setError('grpHub','Please select your hub'); v = false; } if (!n) { setError('grpRiderName','Please enter your name'); v = false; } if (!v) { showToast('Please complete your rider profile','error'); return; } localStorage.setItem(RIDER_PROFILE_KEY, JSON.stringify({hub:h,name:n})); showProfileSaved(n); showToast('Profile saved','success'); }
+hubSelect.addEventListener('change', () => clearError('grpHub'));
+riderNameInput.addEventListener('input', () => clearError('grpRiderName'));
+btnSaveProfile.addEventListener('click', saveRiderProfile);
+
+let scannerStream = null, scannerAnimFrame = null, scannerActive = false, zxingReader = null, scanTarget = null;
+async function openScannerFor(tid) {
+  scanTarget = tid;
+  try { scannerStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}}); scannerVideo.srcObject = scannerStream; scannerOverlay.classList.add('open'); scannerStatus.textContent = 'Point camera at a barcode'; scannerActive = true; await scannerVideo.play(); startScanning(); }
+  catch(err) { if (err.name==='NotAllowedError'||err.name==='PermissionDeniedError') showToast('Camera permission denied. Please allow camera access.','error',5000); else if (err.name==='NotFoundError') showToast('No camera found.','error'); else if (err.name==='NotReadableError') showToast('Camera is being used by another app.','error',5000); else showToast('Could not open camera. Enter tracking number manually.','error',5000); }
+}
+function closeScanner() { scannerActive = false; scannerOverlay.classList.remove('open'); if (scannerAnimFrame) { cancelAnimationFrame(scannerAnimFrame); scannerAnimFrame = null; } if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; } scannerVideo.srcObject = null; if (zxingReader) try { zxingReader.reset(); } catch(e) {} }
+function startScanning() { if (typeof ZXingBrowser !== 'undefined') scanWithZXing(); else if ('BarcodeDetector' in window) scanWithBarcodeDetector(); else loadZXingFallback(); }
+function scanWithZXing() { try { const cr = new ZXingBrowser.BrowserMultiFormatReader(); zxingReader = cr; cr.decodeFromVideoDevice(null, scannerVideo, (r) => { if (r && scannerActive) onBarcodeDetected(r.getText()); }); } catch(e) { if ('BarcodeDetector' in window) scanWithBarcodeDetector(); else scannerStatus.textContent = 'Auto-scan unavailable - enter manually'; } }
+async function scanWithBarcodeDetector() { let fmts = ['code_128','code_39','ean_13','ean_8','upc_a','upc_e','itf','codabar','qr_code','data_matrix']; try { const d = await BarcodeDetector.getSupportedFormats(); if (d.length > 0) fmts = d; } catch(e) {} const det = new BarcodeDetector({formats:fmts}); async function f() { if (!scannerActive) return; try { if (scannerVideo.readyState >= 2) { const b = await det.detect(scannerVideo); if (b.length > 0 && b[0].rawValue) { onBarcodeDetected(b[0].rawValue); return; } } } catch(e) {} scannerAnimFrame = requestAnimationFrame(f); } f(); }
+function loadZXingFallback() { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@aspect-build/rules_lint@0.0.0-20240313-aspect-zxing-wasm/dist/zxing-wasm.min.js'; s.onload = () => { if (typeof ZXingBrowser !== 'undefined') scanWithZXing(); else scannerStatus.textContent = 'Auto-scan unavailable - enter manually'; }; s.onerror = () => { scannerStatus.textContent = 'Auto-scan unavailable - enter manually'; }; document.head.appendChild(s); }
+function onBarcodeDetected(val) { if (!scannerActive) return; const t = val.trim(); if (!t) return; scannerActive = false; const inp = $(scanTarget); if (inp) { inp.value = t; const g = inp.closest('.form-group'); if (g) g.classList.remove('error'); } if (navigator.vibrate) navigator.vibrate(150); showToast('Barcode scanned: '+(t.length>25?t.slice(0,25)+'...':t),'success'); setTimeout(closeScanner, 400); }
+$('btnScan').addEventListener('click', () => openScannerFor('trackingNumber'));
+$('btnOtpScan').addEventListener('click', () => openScannerFor('otpTrackingNumber'));
+$('btnScanClose').addEventListener('click', closeScanner);
+
+let submitting = false;
+function setError(gid, msg) { const g = $(gid); g.classList.add('error'); if (msg) g.querySelector('.error-msg').textContent = msg; }
+function clearError(gid) { $(gid).classList.remove('error'); }
+trackingInput.addEventListener('input', () => clearError('grpTracking'));
+statusSelect.addEventListener('change', () => clearError('grpStatus'));
+remarksInput.addEventListener('input', () => clearError('grpRemarks'));
+
+btnSubmit.addEventListener('click', async () => {
+  if (submitting) return;
+  const profile = getRiderProfile();
+  if (!profile) { showToast('Please complete your rider profile on the Home page first','error',4500); navigateTo('pageHome'); return; }
+  let v = true; const trk = trackingInput.value.trim(), st = statusSelect.value, rem = remarksInput.value.trim();
+  if (!trk) { setError('grpTracking','Please enter a tracking number'); v = false; }
+  if (!st) { setError('grpStatus','Please select a status'); v = false; }
+  if (!rem) { setError('grpRemarks','Please enter remarks'); v = false; }
+  if (!v) { showToast('Please fill in the required fields','error'); return; }
+  submitting = true; btnSubmit.disabled = true; btnSubmit.innerHTML = '<span class="spinner"></span> Submitting\u2026';
+  try {
+    const r = await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({action:'packageStatus',trackingNumber:trk,status:st,remarks:rem,hub:profile.hub,riderName:profile.name}) });
+    const d = await r.json();
+    if (d.success) { showToast(d.message||'Submitted successfully!','success',4000); trackingInput.value=''; statusSelect.value=''; remarksInput.value=''; }
+    else { showToast(d.message||'Submission failed.','error',5000); }
+  } catch(e) { if (e.name==='TypeError') showToast('Network error. Check your connection.','error',5000); else showToast('Something went wrong. Please try again.','error',5000); }
+  finally { submitting = false; btnSubmit.disabled = false; btnSubmit.innerHTML = 'SUBMIT'; }
+});
+
+let verifyingOtp = false;
+otpTrackingInput.addEventListener('input', () => { clearError('grpOtpTracking'); resetOtpResult(); });
+otpCodeInput.addEventListener('input', () => { clearError('grpOtpCode'); resetOtpResult(); otpCodeInput.value = otpCodeInput.value.replace(/[^0-9]/g,''); });
+function resetOtpResult() { otpResult.classList.remove('show','success','failure'); btnVerifyOtp.disabled = false; btnVerifyOtp.classList.remove('verified'); btnVerifyOtp.innerHTML = 'VERIFY OTP'; btnOtpReset.style.display = 'none'; }
+
+btnVerifyOtp.addEventListener('click', async () => {
+  if (verifyingOtp) return;
+  const trk = otpTrackingInput.value.trim(), otp = otpCodeInput.value.trim();
+  let v = true;
+  if (!trk) { setError('grpOtpTracking','Please enter a tracking number'); v = false; }
+  if (!otp) { setError('grpOtpCode','Please enter the OTP'); v = false; }
+  if (!v) { showToast('Please fill in the required fields','error'); return; }
+  const profile = getRiderProfile();
+  verifyingOtp = true; btnVerifyOtp.disabled = true; btnVerifyOtp.innerHTML = '<span class="spinner"></span> Verifying OTP\u2026';
+  otpResult.classList.remove('show','success','failure');
+  try {
+    const payload = {action:'verifyOtp',trackingNumber:trk,enteredOtp:otp};
+    if (profile) { payload.hub = profile.hub; payload.riderName = profile.name; }
+    const r = await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (d.success && d.verified) {
+      otpResultIcon.textContent = '\u2713'; otpResultTitle.textContent = 'OTP VERIFIED'; otpResultMsg.textContent = 'You may hand over the package.';
+      otpResult.className = 'otp-result show success'; btnVerifyOtp.innerHTML = '\u2713 VERIFIED'; btnVerifyOtp.classList.add('verified'); btnVerifyOtp.disabled = true; otpCodeInput.disabled = true;
+    } else if (d.success && !d.verified && d.reason === 'NOT_FOUND') {
+      otpResultIcon.textContent = '\u2717'; otpResultTitle.textContent = 'TRACKING NUMBER NOT FOUND'; otpResultMsg.textContent = 'Please contact Central Office.';
+      otpResult.className = 'otp-result show failure';
+    } else if (d.success && !d.verified && d.reason === 'INACTIVE') {
+      otpResultIcon.textContent = '\u2717'; otpResultTitle.textContent = 'OTP ALREADY USED'; otpResultMsg.textContent = 'This OTP has already been verified. Please contact Central Office.';
+      otpResult.className = 'otp-result show failure';
+    } else {
+      otpResultIcon.textContent = '\u2717'; otpResultTitle.textContent = 'OTP DOES NOT MATCH'; otpResultMsg.textContent = 'Do not hand over the package. Please contact Central Office.';
+      otpResult.className = 'otp-result show failure';
+    }
+    btnOtpReset.style.display = 'block';
+  } catch(e) { if (e.name==='TypeError') showToast('Network error. Check your connection.','error',5000); else showToast('Something went wrong. Please try again.','error',5000); btnVerifyOtp.disabled = false; btnVerifyOtp.innerHTML = 'VERIFY OTP'; }
+  finally { verifyingOtp = false; }
+});
+
+btnOtpReset.addEventListener('click', () => { otpTrackingInput.value=''; otpCodeInput.value=''; otpCodeInput.disabled=false; clearError('grpOtpTracking'); clearError('grpOtpCode'); resetOtpResult(); });
+
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => { const now = Date.now(); if (now - lastTouchEnd <= 300) e.preventDefault(); lastTouchEnd = now; }, false);
+</script>
+</body>
+</html>
