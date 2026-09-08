@@ -89,6 +89,22 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .btn-verify.verified:hover { background: var(--success); }
 .btn-reset { background: #e8eaed; color: var(--text); font-size: 14px; padding: 12px; margin-top: 10px; }
 .btn-reset:hover { background: #dadce0; }
+.search-select { position: relative; }
+.search-select-trigger { width: 100%; padding: 12px 36px 12px 14px; font-size: 16px; border: 1.5px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); cursor: pointer; text-align: left; transition: border-color 0.2s; -webkit-appearance: none; appearance: none; position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-select-trigger:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(26,115,232,0.15); }
+.search-select-trigger::after { content: ''; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--text-secondary); }
+.search-select-trigger.placeholder { color: var(--text-secondary); }
+.search-select-dropdown { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50; background: #fff; border: 1.5px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); max-height: 280px; overflow: hidden; flex-direction: column; }
+.search-select-dropdown.open { display: flex; }
+.search-select-input { border: none; border-bottom: 1px solid var(--border); padding: 12px 14px; font-size: 16px; outline: none; width: 100%; flex-shrink: 0; }
+.search-select-input::placeholder { color: #9aa0a6; }
+.search-select-list { overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
+.search-select-group { font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 14px 4px; background: #f8f9fa; position: sticky; top: 0; z-index: 1; }
+.search-select-option { padding: 10px 14px; font-size: 15px; cursor: pointer; transition: background 0.15s; color: var(--text); }
+.search-select-option:hover, .search-select-option:active { background: #e8f0fe; }
+.search-select-option.selected { background: #d2e3fc; font-weight: 600; }
+.search-select-empty { padding: 16px 14px; font-size: 14px; color: var(--text-secondary); text-align: center; }
+.form-group.error .search-select-trigger { border-color: var(--error); background: #fce8e6; }
 </style>
 </head>
 <body>
@@ -147,13 +163,20 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
       <div class="error-msg">Please enter a tracking number</div>
     </div>
     <div class="form-group" id="grpStatus">
-      <label>Status</label>
-      <select id="statusSelect"><option value="">-- Select status --</option></select>
-      <div class="error-msg">Please select a status</div>
+      <label>Reason</label>
+      <div class="search-select" id="reasonSelectWrap">
+        <div class="search-select-trigger placeholder" id="reasonTrigger" tabindex="0">-- Select reason --</div>
+        <div class="search-select-dropdown" id="reasonDropdown">
+          <input type="text" class="search-select-input" id="reasonSearchInput" placeholder="Search reason..." autocomplete="off">
+          <div class="search-select-list" id="reasonList"></div>
+        </div>
+      </div>
+      <input type="hidden" id="statusSelect" value="">
+      <div class="error-msg">Please select a reason</div>
     </div>
     <div class="form-group" id="grpRemarks">
       <label>Remarks</label>
-      <textarea id="remarks" placeholder="Enter remarks (required)"></textarea>
+      <textarea id="remarks" placeholder="Enter remarks"></textarea>
       <div class="error-msg">Please enter remarks</div>
     </div>
     <button class="btn btn-submit" id="btnSubmit">SUBMIT</button>
@@ -203,7 +226,15 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 
 <script>
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRH7DzTUeSWp-BCcxNAJE3T2sikGKZuoYnjSTBHUxNaz-vTpLih0MyWMV5LTkijepD/exec';
-const STATUS_OPTIONS = ['Delivered','Customer Not Available','Customer Rejected','Rescheduled','Failed','Other'];
+const REASON_OPTIONS = [
+  {group:'Customer Unavailable',items:['customer_not_at_home','Phone Switch-off','Phone not connected','Phone number wrong','Phone cut by customer','Phone answered by customer family/others','Phone not answered by customer']},
+  {group:'Cancelled / Rejected',items:['customer_cancelled_order_before_delivery','customer_accidentally_placed_an_order','Customer only said Cancelled the package','customer_has_no_cash_available','Customer found same product cheaper elsewhere','Customer got confused about order','customers_place_the_same_order_on_other_platforms']},
+  {group:'Customer Requests',items:['Customer Want to open package','Customer want package on urgent basis','Customer claims Delay Delivery']},
+  {group:'Order / Address Issues',items:['duplicated_order','cod_amount_wrong','invalid_address','non_serviceable_area','item_not_as_advertised']},
+  {group:'Package Issues',items:['damaged_item','package_damaged']},
+  {group:'Operational',items:['driver_overloaded','vehicle_breakdown']},
+  {group:'Other',items:['Others']}
+];
 const HUB_OPTIONS = ['THA','BB1','BLJ','SOL','SAL','GKH','POK','BUT','NGH','BRT','JNK','BTM','BRJ','DHG','BWA'];
 const RIDER_PROFILE_KEY = 'riderProfile';
 
@@ -212,6 +243,7 @@ const menuOverlay = $('menuOverlay'), sideMenu = $('sideMenu');
 const pages = document.querySelectorAll('.page');
 const menuItems = document.querySelectorAll('.menu-items li[data-page]');
 const trackingInput = $('trackingNumber'), statusSelect = $('statusSelect'), remarksInput = $('remarks'), btnSubmit = $('btnSubmit');
+const reasonTrigger = $('reasonTrigger'), reasonDropdown = $('reasonDropdown'), reasonSearchInput = $('reasonSearchInput'), reasonList = $('reasonList'), reasonSelectWrap = $('reasonSelectWrap');
 const hubSelect = $('hubSelect'), riderNameInput = $('riderName'), btnSaveProfile = $('btnSaveProfile');
 const profileSavedHint = $('profileSavedHint'), homeGreeting = $('homeGreeting');
 const otpTrackingInput = $('otpTrackingNumber'), otpCodeInput = $('otpCode'), btnVerifyOtp = $('btnVerifyOtp');
@@ -221,11 +253,40 @@ const scannerOverlay = $('scannerOverlay'), scannerVideo = $('scannerVideo'), sc
 const toastEl = $('toast');
 
 (function init() {
-  STATUS_OPTIONS.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; statusSelect.appendChild(o); });
   HUB_OPTIONS.forEach(h => { const o = document.createElement('option'); o.value = h; o.textContent = h; hubSelect.appendChild(o); });
+  buildReasonList('');
   const p = getRiderProfile();
   if (p) { hubSelect.value = p.hub || ''; riderNameInput.value = p.name || ''; showProfileSaved(p.name); }
 })();
+
+function buildReasonList(filter) {
+  reasonList.innerHTML = '';
+  const q = filter.toLowerCase().replace(/[_\s-]/g,'');
+  let hasMatch = false;
+  REASON_OPTIONS.forEach(grp => {
+    const matched = grp.items.filter(item => { const norm = item.toLowerCase().replace(/[_\s-]/g,''); return !q || norm.indexOf(q) >= 0 || item.toLowerCase().indexOf(filter.toLowerCase()) >= 0; });
+    if (matched.length === 0) return;
+    hasMatch = true;
+    const gh = document.createElement('div'); gh.className = 'search-select-group'; gh.textContent = grp.group; reasonList.appendChild(gh);
+    matched.forEach(item => {
+      const opt = document.createElement('div'); opt.className = 'search-select-option'; opt.textContent = item; opt.dataset.value = item;
+      if (statusSelect.value === item) opt.classList.add('selected');
+      opt.addEventListener('click', () => selectReason(item));
+      reasonList.appendChild(opt);
+    });
+  });
+  if (!hasMatch) { const empty = document.createElement('div'); empty.className = 'search-select-empty'; empty.textContent = 'No matching reason found'; reasonList.appendChild(empty); }
+}
+function selectReason(val) {
+  statusSelect.value = val; reasonTrigger.textContent = val; reasonTrigger.classList.remove('placeholder');
+  closeReasonDropdown(); clearError('grpStatus');
+}
+function openReasonDropdown() { reasonDropdown.classList.add('open'); reasonSearchInput.value = ''; buildReasonList(''); setTimeout(() => reasonSearchInput.focus(), 50); }
+function closeReasonDropdown() { reasonDropdown.classList.remove('open'); reasonSearchInput.value = ''; }
+reasonTrigger.addEventListener('click', () => { if (reasonDropdown.classList.contains('open')) closeReasonDropdown(); else openReasonDropdown(); });
+reasonSearchInput.addEventListener('input', () => buildReasonList(reasonSearchInput.value));
+reasonSearchInput.addEventListener('keydown', e => { if (e.key === 'Escape') { closeReasonDropdown(); reasonTrigger.focus(); } });
+document.addEventListener('click', e => { if (!reasonSelectWrap.contains(e.target)) closeReasonDropdown(); });
 
 function openMenu() { menuOverlay.classList.add('open'); sideMenu.classList.add('open'); }
 function closeMenu() { menuOverlay.classList.remove('open'); sideMenu.classList.remove('open'); }
@@ -267,7 +328,6 @@ let submitting = false;
 function setError(gid, msg) { const g = $(gid); g.classList.add('error'); if (msg) g.querySelector('.error-msg').textContent = msg; }
 function clearError(gid) { $(gid).classList.remove('error'); }
 trackingInput.addEventListener('input', () => clearError('grpTracking'));
-statusSelect.addEventListener('change', () => clearError('grpStatus'));
 remarksInput.addEventListener('input', () => clearError('grpRemarks'));
 
 btnSubmit.addEventListener('click', async () => {
@@ -276,14 +336,13 @@ btnSubmit.addEventListener('click', async () => {
   if (!profile) { showToast('Please complete your rider profile on the Home page first','error',4500); navigateTo('pageHome'); return; }
   let v = true; const trk = trackingInput.value.trim(), st = statusSelect.value, rem = remarksInput.value.trim();
   if (!trk) { setError('grpTracking','Please enter a tracking number'); v = false; }
-  if (!st) { setError('grpStatus','Please select a status'); v = false; }
-  if (!rem) { setError('grpRemarks','Please enter remarks'); v = false; }
+  if (!st) { setError('grpStatus','Please select a reason'); v = false; }
   if (!v) { showToast('Please fill in the required fields','error'); return; }
   submitting = true; btnSubmit.disabled = true; btnSubmit.innerHTML = '<span class="spinner"></span> Submitting\u2026';
   try {
     const r = await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({action:'packageStatus',trackingNumber:trk,status:st,remarks:rem,hub:profile.hub,riderName:profile.name}) });
     const d = await r.json();
-    if (d.success) { showToast(d.message||'Submitted successfully!','success',4000); trackingInput.value=''; statusSelect.value=''; remarksInput.value=''; }
+    if (d.success) { showToast(d.message||'Submitted successfully!','success',4000); trackingInput.value=''; statusSelect.value=''; reasonTrigger.textContent='-- Select reason --'; reasonTrigger.classList.add('placeholder'); remarksInput.value=''; }
     else { showToast(d.message||'Submission failed.','error',5000); }
   } catch(e) { if (e.name==='TypeError') showToast('Network error. Check your connection.','error',5000); else showToast('Something went wrong. Please try again.','error',5000); }
   finally { submitting = false; btnSubmit.disabled = false; btnSubmit.innerHTML = 'SUBMIT'; }
