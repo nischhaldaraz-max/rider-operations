@@ -316,8 +316,20 @@ function startScanning() { if (typeof ZXingBrowser !== 'undefined') scanWithZXin
 function scanWithZXing() { try { const cr = new ZXingBrowser.BrowserMultiFormatReader(); zxingReader = cr; cr.decodeFromVideoDevice(null, scannerVideo, (r) => { if (r && scannerActive) onBarcodeDetected(r.getText()); }); } catch(e) { if ('BarcodeDetector' in window) scanWithBarcodeDetector(); else scannerStatus.textContent = 'Auto-scan unavailable - enter manually'; } }
 async function scanWithBarcodeDetector() { let fmts = ['code_128','code_39','ean_13','ean_8','upc_a','upc_e','itf','codabar','qr_code','data_matrix']; try { const d = await BarcodeDetector.getSupportedFormats(); if (d.length > 0) fmts = d; } catch(e) {} const det = new BarcodeDetector({formats:fmts}); async function f() { if (!scannerActive) return; try { if (scannerVideo.readyState >= 2) { const b = await det.detect(scannerVideo); if (b.length > 0 && b[0].rawValue) { onBarcodeDetected(b[0].rawValue); return; } } } catch(e) {} scannerAnimFrame = requestAnimationFrame(f); } f(); }
 function loadZXingFallback() { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@aspect-build/rules_lint@0.0.0-20240313-aspect-zxing-wasm/dist/zxing-wasm.min.js'; s.onload = () => { if (typeof ZXingBrowser !== 'undefined') scanWithZXing(); else scannerStatus.textContent = 'Auto-scan unavailable - enter manually'; }; s.onerror = () => { scannerStatus.textContent = 'Auto-scan unavailable - enter manually'; }; document.head.appendChild(s); }
-function extractTrackingNumber(raw) { var m = raw.match(/[A-Z]{2,6}[A-Z0-9]*\d{4,}[A-Z0-9]*/g); if (m) { for (var i = 0; i < m.length; i++) { if (m[i].length >= 10 && /\d/.test(m[i]) && /[A-Z]/.test(m[i])) return m[i]; } } return raw.trim(); }
-function isValidTrackingNumber(tn) { return /^[A-Z]{2,6}[A-Z0-9]*\d{4,}[A-Z0-9]*$/.test(tn) && tn.length >= 10; }
+function extractTrackingNumber(raw) {
+  var cleaned = raw.replace(/[,<>\s;|]/g, '');
+  var m = cleaned.match(/[A-Z]{2,6}[A-Z0-9]*\d{4,}[A-Z0-9]*/g);
+  if (m) {
+    for (var i = 0; i < m.length; i++) {
+      if (m[i].length >= 10 && /\d/.test(m[i]) && /[A-Z]/.test(m[i])) return m[i];
+    }
+  }
+  return '';
+}
+function isValidTrackingNumber(tn) {
+  if (!tn || tn.length < 10) return false;
+  return /^(DEX|TCS|UPA)[A-Z0-9]*\d{4,}[A-Z0-9]*$/i.test(tn) || /^[A-Z]{2,6}[A-Z0-9]*\d{4,}[A-Z0-9]*$/.test(tn);
+}
 function onBarcodeDetected(val) { if (!scannerActive) return; const t = extractTrackingNumber(val); if (!t) return; scannerActive = false; const inp = $(scanTarget); if (inp) { inp.value = t; const g = inp.closest('.form-group'); if (g) g.classList.remove('error'); } if (navigator.vibrate) navigator.vibrate(150); if (isValidTrackingNumber(t)) { showToast('Barcode scanned: '+(t.length>25?t.slice(0,25)+'...':t),'success'); } else { if (navigator.vibrate) navigator.vibrate([150,100,150]); showToast('Warning: "'+t+'" may be a partial scan. Please verify or rescan.','error',5000); } setTimeout(closeScanner, 400); }
 $('btnScan').addEventListener('click', () => openScannerFor('trackingNumber'));
 $('btnOtpScan').addEventListener('click', () => openScannerFor('otpTrackingNumber'));
