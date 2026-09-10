@@ -105,6 +105,16 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .search-select-option.selected { background: #d2e3fc; font-weight: 600; }
 .search-select-empty { padding: 16px 14px; font-size: 14px; color: var(--text-secondary); text-align: center; }
 .form-group.error .search-select-trigger { border-color: var(--error); background: #fce8e6; }
+.reason-group-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.reason-group-btn { padding: 10px 14px; font-size: 13px; font-weight: 600; border: 1.5px solid var(--border); border-radius: 20px; background: #fff; color: var(--text); cursor: pointer; transition: all 0.2s; flex: 1 1 calc(50% - 4px); text-align: center; min-width: 110px; }
+.reason-group-btn:active { transform: scale(0.97); }
+.reason-group-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.reason-section { display: none; margin-bottom: 16px; animation: fadeSlide 0.2s ease; }
+.reason-section.show { display: block; }
+.reason-section-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f1f3f4; border-radius: 8px; margin-bottom: 8px; }
+.reason-section-title { font-size: 14px; font-weight: 700; color: var(--primary); }
+.reason-section-close { background: none; border: none; font-size: 20px; color: var(--text-secondary); cursor: pointer; padding: 0 4px; line-height: 1; }
+@keyframes fadeSlide { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 </head>
 <body>
@@ -164,11 +174,18 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
     </div>
     <div class="form-group" id="grpStatus">
       <label>Reason</label>
-      <div class="search-select" id="reasonSelectWrap">
-        <div class="search-select-trigger placeholder" id="reasonTrigger" tabindex="0">-- Select reason --</div>
-        <div class="search-select-dropdown" id="reasonDropdown">
-          <input type="text" class="search-select-input" id="reasonSearchInput" placeholder="Search reason..." autocomplete="off">
-          <div class="search-select-list" id="reasonList"></div>
+      <div class="reason-group-btns" id="reasonGroupBtns"></div>
+      <div class="reason-section" id="reasonSection">
+        <div class="reason-section-header">
+          <span class="reason-section-title" id="reasonSectionTitle"></span>
+          <button class="reason-section-close" id="reasonSectionClose">&times;</button>
+        </div>
+        <div class="search-select" id="reasonSelectWrap">
+          <div class="search-select-trigger placeholder" id="reasonTrigger" tabindex="0">-- Select reason --</div>
+          <div class="search-select-dropdown" id="reasonDropdown">
+            <input type="text" class="search-select-input" id="reasonSearchInput" placeholder="Search reason..." autocomplete="off">
+            <div class="search-select-list" id="reasonList"></div>
+          </div>
         </div>
       </div>
       <input type="hidden" id="statusSelect" value="">
@@ -226,13 +243,11 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 <script>
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwRH7DzTUeSWp-BCcxNAJE3T2sikGKZuoYnjSTBHUxNaz-vTpLih0MyWMV5LTkijepD/exec';
 const REASON_OPTIONS = [
-  {group:'Customer Unavailable',items:['Customer not at home','Phone switch-off','Phone not connected','Phone number wrong','Phone cut by customer','Phone answered by customer family/others','Phone not answered by customer']},
-  {group:'Cancelled / Rejected',items:['Customer cancelled order before delivery','Customer accidentally placed an order','Customer only said cancelled the package','Customer has no cash available','Customer found same product cheaper elsewhere','Customer got confused about order','Customer placed the same order on other platforms']},
-  {group:'Customer Requests',items:['Customer want to open package','Customer want package on urgent basis','Customer claims delay delivery']},
-  {group:'Order / Address Issues',items:['Duplicated order','COD amount wrong','Invalid address','Non serviceable area','Item not as advertised']},
-  {group:'Package Issues',items:['Damaged item','Package damaged']},
-  {group:'Operational',items:['Driver overloaded','Vehicle breakdown']},
-  {group:'Other',items:['Others']}
+  {group:'Call Issue',items:['Phone switch-off','Phone not connected','Phone number wrong','Phone cut by customer','Phone not answered by customer']},
+  {group:'Customer Issue',items:['Customer phone answered by family/others','Customer not at location due to office hours ends','Customer cancelled order before delivery','Customer did not placed an order','Customer only said cancelled the package','Customer has no cash available','Customer found same product cheaper elsewhere','Customer got confused about order','Customer placed the same order on other platforms','Customer want to open package','Customer want package on urgent basis','Customer claims delay delivery','Customer not at home']},
+  {group:'Product / Address Issues',items:['Duplicated order','COD amount wrong','Invalid address','Non serviceable area','Item not as Photo','Address changed to another location','Package damaged','Size/color issue']},
+  {group:'Operational Issue',items:['Driver overloaded','Vehicle breakdown / battery swipe issue','Rider mobile issue','Rider health issue','Urgent leave required to rider']},
+  {group:'Other',items:[]}
 ];
 const HUB_OPTIONS = ['THA','BB1','BLJ','SOL','SAL','GKH','POK','BUT','NGH','BRT','JNK','BTM','BRJ','DHG','BWA','THX'];
 const RIDER_PROFILE_KEY = 'riderProfile';
@@ -243,6 +258,8 @@ const pages = document.querySelectorAll('.page');
 const menuItems = document.querySelectorAll('.menu-items li[data-page]');
 const trackingInput = $('trackingNumber'), statusSelect = $('statusSelect'), remarksInput = $('remarks'), btnSubmit = $('btnSubmit');
 const reasonTrigger = $('reasonTrigger'), reasonDropdown = $('reasonDropdown'), reasonSearchInput = $('reasonSearchInput'), reasonList = $('reasonList'), reasonSelectWrap = $('reasonSelectWrap');
+const reasonSection = $('reasonSection'), reasonSectionTitle = $('reasonSectionTitle'), reasonSectionClose = $('reasonSectionClose'), reasonGroupBtns = $('reasonGroupBtns');
+let selectedReasonGroup = null;
 const hubSelect = $('hubSelect'), riderNameInput = $('riderName'), btnSaveProfile = $('btnSaveProfile');
 const profileSavedHint = $('profileSavedHint'), homeGreeting = $('homeGreeting');
 const otpTrackingInput = $('otpTrackingNumber'), otpCodeInput = $('otpCode'), btnVerifyOtp = $('btnVerifyOtp');
@@ -253,39 +270,75 @@ const toastEl = $('toast');
 
 (function init() {
   HUB_OPTIONS.forEach(h => { const o = document.createElement('option'); o.value = h; o.textContent = h; hubSelect.appendChild(o); });
-  buildReasonList('');
+  REASON_OPTIONS.forEach((grp, idx) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'reason-group-btn';
+    btn.textContent = grp.group;
+    btn.dataset.groupIdx = idx;
+    btn.addEventListener('click', () => selectGroup(idx));
+    reasonGroupBtns.appendChild(btn);
+  });
+  reasonSectionClose.addEventListener('click', closeReasonSection);
   const p = getRiderProfile();
   if (p) { hubSelect.value = p.hub || ''; riderNameInput.value = p.name || ''; showProfileSaved(p.name); }
 })();
 
+function selectGroup(idx) {
+  var grp = REASON_OPTIONS[idx];
+  selectedReasonGroup = idx;
+  statusSelect.value = '';
+  reasonTrigger.textContent = '-- Select reason --';
+  reasonTrigger.classList.add('placeholder');
+  closeReasonDropdown();
+  reasonGroupBtns.querySelectorAll('.reason-group-btn').forEach(function(b, i) { b.classList.toggle('active', i === idx); });
+  if (grp.items.length === 0) {
+    reasonSection.classList.remove('show');
+    clearError('grpStatus');
+    remarksInput.focus();
+    return;
+  }
+  reasonSectionTitle.textContent = grp.group;
+  reasonSection.classList.add('show');
+  buildReasonList('');
+  clearError('grpStatus');
+}
+function closeReasonSection() {
+  reasonSection.classList.remove('show');
+  selectedReasonGroup = null;
+  statusSelect.value = '';
+  reasonTrigger.textContent = '-- Select reason --';
+  reasonTrigger.classList.add('placeholder');
+  closeReasonDropdown();
+  reasonGroupBtns.querySelectorAll('.reason-group-btn').forEach(function(b) { b.classList.remove('active'); });
+}
 function buildReasonList(filter) {
   reasonList.innerHTML = '';
-  const q = filter.toLowerCase().replace(/[_\s-]/g,'');
-  let hasMatch = false;
-  REASON_OPTIONS.forEach(grp => {
-    const matched = grp.items.filter(item => { const norm = item.toLowerCase().replace(/[_\s-]/g,''); return !q || norm.indexOf(q) >= 0 || item.toLowerCase().indexOf(filter.toLowerCase()) >= 0; });
-    if (matched.length === 0) return;
-    hasMatch = true;
-    const gh = document.createElement('div'); gh.className = 'search-select-group'; gh.textContent = grp.group; reasonList.appendChild(gh);
-    matched.forEach(item => {
-      const opt = document.createElement('div'); opt.className = 'search-select-option'; opt.textContent = item; opt.dataset.value = item;
-      if (statusSelect.value === item) opt.classList.add('selected');
-      opt.addEventListener('click', () => selectReason(item));
-      reasonList.appendChild(opt);
-    });
+  if (selectedReasonGroup === null) return;
+  var grp = REASON_OPTIONS[selectedReasonGroup];
+  var q = filter.toLowerCase().replace(/[_\s-]/g, '');
+  var matched = grp.items.filter(function(item) { var norm = item.toLowerCase().replace(/[_\s-]/g, ''); return !q || norm.indexOf(q) >= 0 || item.toLowerCase().indexOf(filter.toLowerCase()) >= 0; });
+  if (matched.length === 0) {
+    var empty = document.createElement('div'); empty.className = 'search-select-empty'; empty.textContent = 'No matching reason found'; reasonList.appendChild(empty);
+    return;
+  }
+  matched.forEach(function(item) {
+    var opt = document.createElement('div'); opt.className = 'search-select-option'; opt.textContent = item; opt.dataset.value = item;
+    if (statusSelect.value === item) opt.classList.add('selected');
+    opt.addEventListener('click', function() { selectReason(item); });
+    reasonList.appendChild(opt);
   });
-  if (!hasMatch) { const empty = document.createElement('div'); empty.className = 'search-select-empty'; empty.textContent = 'No matching reason found'; reasonList.appendChild(empty); }
 }
 function selectReason(val) {
   statusSelect.value = val; reasonTrigger.textContent = val; reasonTrigger.classList.remove('placeholder');
   closeReasonDropdown(); clearError('grpStatus');
 }
-function openReasonDropdown() { reasonDropdown.classList.add('open'); reasonSearchInput.value = ''; buildReasonList(''); setTimeout(() => reasonSearchInput.focus(), 50); }
+function openReasonDropdown() { reasonDropdown.classList.add('open'); reasonSearchInput.value = ''; buildReasonList(''); setTimeout(function() { reasonSearchInput.focus(); }, 50); }
 function closeReasonDropdown() { reasonDropdown.classList.remove('open'); reasonSearchInput.value = ''; }
-reasonTrigger.addEventListener('click', () => { if (reasonDropdown.classList.contains('open')) closeReasonDropdown(); else openReasonDropdown(); });
-reasonSearchInput.addEventListener('input', () => buildReasonList(reasonSearchInput.value));
-reasonSearchInput.addEventListener('keydown', e => { if (e.key === 'Escape') { closeReasonDropdown(); reasonTrigger.focus(); } });
-document.addEventListener('click', e => { if (!reasonSelectWrap.contains(e.target)) closeReasonDropdown(); });
+reasonTrigger.addEventListener('click', function() { if (reasonDropdown.classList.contains('open')) closeReasonDropdown(); else openReasonDropdown(); });
+reasonSearchInput.addEventListener('input', function() { buildReasonList(reasonSearchInput.value); });
+reasonSearchInput.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeReasonDropdown(); reasonTrigger.focus(); } });
+document.addEventListener('click', function(e) { if (!reasonSelectWrap.contains(e.target) && !reasonSection.contains(e.target)) closeReasonDropdown(); });
 
 function openMenu() { menuOverlay.classList.add('open'); sideMenu.classList.add('open'); }
 function closeMenu() { menuOverlay.classList.remove('open'); sideMenu.classList.remove('open'); }
@@ -353,7 +406,7 @@ btnSubmit.addEventListener('click', async () => {
   try {
     const r = await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({action:'packageStatus',trackingNumber:trk,status:st,remarks:rem,hub:profile.hub,riderName:profile.name}) });
     const d = await r.json();
-    if (d.success) { showToast(d.message||'Submitted successfully!','success',4000); trackingInput.value=''; statusSelect.value=''; reasonTrigger.textContent='-- Select reason --'; reasonTrigger.classList.add('placeholder'); remarksInput.value=''; }
+    if (d.success) { showToast(d.message||'Submitted successfully!','success',4000); trackingInput.value=''; statusSelect.value=''; reasonTrigger.textContent='-- Select reason --'; reasonTrigger.classList.add('placeholder'); remarksInput.value=''; closeReasonSection(); }
     else { showToast(d.message||'Submission failed.','error',5000); }
   } catch(e) { if (e.name==='TypeError') showToast('Network error. Check your connection.','error',5000); else showToast('Something went wrong. Please try again.','error',5000); }
   finally { submitting = false; btnSubmit.disabled = false; btnSubmit.innerHTML = 'SUBMIT'; }
