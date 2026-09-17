@@ -136,6 +136,11 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .odo-submit { background: var(--success); color: #fff; font-size: 18px; padding: 16px; margin-top: 8px; }
 .odo-submit:hover { background: #0b8a4a; }
 .odo-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.odo-note-toggle { width: 100%; padding: 12px 16px; font-size: 14px; font-weight: 600; border: 1.5px dashed var(--border); border-radius: 8px; background: #fafafa; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; margin-bottom: 18px; text-align: left; }
+.odo-note-toggle:active { transform: scale(0.98); }
+.odo-note-toggle.open { border-style: solid; border-color: var(--primary); color: var(--primary); background: #e8f0fe; }
+.odo-note-panel { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, opacity 0.25s ease; opacity: 0; }
+.odo-note-panel.open { max-height: 300px; opacity: 1; }
 .form-group.error textarea { border-color: var(--error); background: #fce8e6; }
 </style>
 </head>
@@ -274,13 +279,16 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
       </div>
       <div class="error-msg">Please take an odometer photo</div>
     </div>
-    <div class="form-group" id="grpOdoRemarks">
-      <label>Remarks <span style="font-weight:400; text-transform:none; font-size:12px;">(Optional: write if you have forgotten last update or any remarks)</span></label>
-      <textarea id="odoRemarks" placeholder="Enter remarks"></textarea>
-    </div>
-    <div class="form-group" id="grpOdoDate">
-      <label>Date <span style="font-weight:400; text-transform:none; font-size:12px;">(Optional: only if this entry is for a past date)</span></label>
-      <input type="date" id="odoDate">
+    <button type="button" class="odo-note-toggle" id="btnOdoNoteToggle">&#x1F4DD; Forgot to fill a previous day? Or have a comment?</button>
+    <div class="odo-note-panel" id="odoNotePanel">
+      <div class="form-group" id="grpOdoRemarks">
+        <label>Remarks</label>
+        <textarea id="odoRemarks" placeholder="Describe what happened or what you forgot to log"></textarea>
+      </div>
+      <div class="form-group" id="grpOdoDate">
+        <label>Which date is this about? <span style="font-weight:400; text-transform:none; font-size:12px;">(the date you forgot to log)</span></label>
+        <input type="date" id="odoDate">
+      </div>
     </div>
     <button class="btn odo-submit" id="btnOdoSubmit">SUBMIT ODOMETER</button>
   </div>
@@ -524,7 +532,14 @@ const odoPhotoPreview = $('odoPhotoPreview'), odoPhotoImg = $('odoPhotoImg');
 const btnOdoPhoto = $('btnOdoPhoto'), btnOdoRetake = $('btnOdoRetake');
 const btnOdoSubmit = $('btnOdoSubmit');
 const odoRemarksInput = $('odoRemarks'), odoDateInput = $('odoDate');
+const btnOdoNoteToggle = $('btnOdoNoteToggle'), odoNotePanel = $('odoNotePanel');
 let odoAction = '', odoPhotoData = '';
+
+// Toggle note panel (forgot to log / comments)
+btnOdoNoteToggle.addEventListener('click', function() {
+  btnOdoNoteToggle.classList.toggle('open');
+  odoNotePanel.classList.toggle('open');
+});
 
 // Show rider profile info on odometer page
 function showOdoProfile() {
@@ -625,6 +640,7 @@ btnOdoSubmit.addEventListener('click', async function() {
       btnOdoRetake.style.display = 'none'; btnOdoPhoto.classList.remove('has-photo');
       btnOdoPhoto.innerHTML = '&#x1F4F7; TAKE ODOMETER PHOTO';
       odoRemarksInput.value = ''; odoDateInput.value = '';
+      btnOdoNoteToggle.classList.remove('open'); odoNotePanel.classList.remove('open');
     } else {
       showToast(d.message||'Submission failed.','error',5000);
     }
