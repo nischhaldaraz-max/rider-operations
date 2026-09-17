@@ -115,6 +115,22 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .reason-section-title { font-size: 14px; font-weight: 700; color: var(--primary); }
 .reason-section-close { background: none; border: none; font-size: 20px; color: var(--text-secondary); cursor: pointer; padding: 0 4px; line-height: 1; }
 @keyframes fadeSlide { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+.odo-action-btns { display: flex; gap: 12px; margin-bottom: 18px; }
+.odo-action-btn { flex: 1; padding: 20px 10px; font-size: 16px; font-weight: 700; border: 2px solid var(--border); border-radius: 12px; background: #fff; color: var(--text); cursor: pointer; transition: all 0.2s; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; }
+.odo-action-btn:active { transform: scale(0.97); }
+.odo-action-btn.selected-out { background: #e8f0fe; border-color: var(--primary); color: var(--primary); }
+.odo-action-btn.selected-in { background: #e6f4ea; border-color: var(--success); color: #0b8a4a; }
+.odo-photo-wrap { text-align: center; }
+.odo-photo-preview { display: none; margin: 12px auto; max-width: 220px; border-radius: 8px; border: 1.5px solid var(--border); overflow: hidden; }
+.odo-photo-preview img { width: 100%; display: block; }
+.odo-photo-btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 24px; font-size: 15px; font-weight: 600; border: 2px solid var(--primary); border-radius: 8px; background: #e8f0fe; color: var(--primary); cursor: pointer; transition: all 0.2s; }
+.odo-photo-btn:active { transform: scale(0.97); }
+.odo-photo-btn.has-photo { border-color: var(--success); background: #e6f4ea; color: #0b8a4a; }
+.odo-photo-retake { display: none; margin-top: 8px; padding: 8px 16px; font-size: 13px; font-weight: 600; border: 1px solid var(--border); border-radius: 6px; background: #fff; color: var(--text-secondary); cursor: pointer; }
+.odo-submit { background: var(--success); color: #fff; font-size: 18px; padding: 16px; margin-top: 8px; }
+.odo-submit:hover { background: #0b8a4a; }
+.odo-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.form-group.error textarea { border-color: var(--error); background: #fce8e6; }
 </style>
 </head>
 <body>
@@ -134,7 +150,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
   <ul class="menu-items">
     <li data-page="pageStatus">&#x1F4E6; Package Status</li>
     <li data-page="pageOtp">&#x1F510; ATM OTP Verification</li>
-    <li class="disabled">&#x1F3CD;&#xFE0F; Rider Odometer <span class="badge">Coming Soon</span></li>
+    <li data-page="pageOdometer">&#x1F3CD;&#xFE0F; Rider Odometer</li>
   </ul>
 </nav>
 
@@ -222,6 +238,46 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
       <div class="otp-msg" id="otpResultMsg"></div>
     </div>
     <button class="btn btn-reset" id="btnOtpReset" style="display:none;">Verify Another Package</button>
+  </div>
+</div>
+
+<div class="page" id="pageOdometer">
+  <div class="card">
+    <h3>&#x1F3CD;&#xFE0F; Rider Odometer</h3>
+    <div class="form-group" id="grpOdoHub">
+      <label>Hub</label>
+      <select id="odoHubSelect"><option value="">-- Select hub --</option></select>
+      <div class="error-msg">Please select a hub</div>
+    </div>
+    <div class="form-group" id="grpOdoRider">
+      <label>Rider</label>
+      <select id="odoRiderSelect"><option value="">-- Select rider --</option></select>
+      <div class="error-msg">Please select a rider</div>
+    </div>
+    <div class="form-group" id="grpOdoAction">
+      <label>Action</label>
+      <div class="odo-action-btns">
+        <button type="button" class="odo-action-btn" id="btnCheckOut">CHECK OUT</button>
+        <button type="button" class="odo-action-btn" id="btnCheckIn">CHECK IN</button>
+      </div>
+      <div class="error-msg">Please select Check In or Check Out</div>
+    </div>
+    <div class="form-group" id="grpOdoKm">
+      <label>Odometer Reading (KM)</label>
+      <input type="number" id="odoKm" placeholder="Enter odometer reading" inputmode="numeric" min="0" step="1">
+      <div class="error-msg">Please enter a valid odometer reading</div>
+    </div>
+    <div class="form-group" id="grpOdoPhoto">
+      <label>Odometer Photo</label>
+      <div class="odo-photo-wrap">
+        <input type="file" id="odoPhotoInput" accept="image/*" capture="environment" style="display:none;">
+        <button type="button" class="odo-photo-btn" id="btnOdoPhoto">&#x1F4F7; TAKE ODOMETER PHOTO</button>
+        <div class="odo-photo-preview" id="odoPhotoPreview"><img id="odoPhotoImg" alt="Odometer photo"></div>
+        <button type="button" class="odo-photo-retake" id="btnOdoRetake">Retake Photo</button>
+      </div>
+      <div class="error-msg">Please take an odometer photo</div>
+    </div>
+    <button class="btn odo-submit" id="btnOdoSubmit">SUBMIT ODOMETER</button>
   </div>
 </div>
 
@@ -454,6 +510,135 @@ btnOtpReset.addEventListener('click', () => { otpTrackingInput.value=''; otpCode
 
 let lastTouchEnd = 0;
 document.addEventListener('touchend', e => { const now = Date.now(); if (now - lastTouchEnd <= 300) e.preventDefault(); lastTouchEnd = now; }, false);
+
+// ─── ODOMETER MODULE ────────────────────────────────────
+const odoHubSelect = $('odoHubSelect'), odoRiderSelect = $('odoRiderSelect');
+const btnCheckOut = $('btnCheckOut'), btnCheckIn = $('btnCheckIn');
+const odoKmInput = $('odoKm'), odoPhotoInput = $('odoPhotoInput');
+const odoPhotoPreview = $('odoPhotoPreview'), odoPhotoImg = $('odoPhotoImg');
+const btnOdoPhoto = $('btnOdoPhoto'), btnOdoRetake = $('btnOdoRetake');
+const btnOdoSubmit = $('btnOdoSubmit');
+let odoAction = '', odoPhotoData = '', odoHubRiders = {};
+
+// Load hub/rider data from backend
+(function loadOdoData() {
+  fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({action:'getHubRiders'}) })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.success) { showToast('Could not load hub/rider data','error',4000); return; }
+      odoHubRiders = d.riders || {};
+      var hubs = d.hubs || [];
+      odoHubSelect.innerHTML = '<option value="">-- Select hub --</option>';
+      hubs.forEach(function(h) { var o = document.createElement('option'); o.value = h; o.textContent = h; odoHubSelect.appendChild(o); });
+    })
+    .catch(function() { showToast('Network error loading hub data','error',4000); });
+})();
+
+odoHubSelect.addEventListener('change', function() {
+  clearError('grpOdoHub');
+  var hub = odoHubSelect.value;
+  odoRiderSelect.innerHTML = '<option value="">-- Select rider --</option>';
+  if (!hub || !odoHubRiders[hub]) return;
+  odoHubRiders[hub].forEach(function(r) { var o = document.createElement('option'); o.value = r; o.textContent = r; odoRiderSelect.appendChild(o); });
+});
+odoRiderSelect.addEventListener('change', function() { clearError('grpOdoRider'); });
+
+// Check-in / Check-out
+btnCheckOut.addEventListener('click', function() {
+  odoAction = 'CHECK_OUT';
+  btnCheckOut.classList.add('selected-out'); btnCheckIn.classList.remove('selected-in');
+  clearError('grpOdoAction');
+});
+btnCheckIn.addEventListener('click', function() {
+  odoAction = 'CHECK_IN';
+  btnCheckIn.classList.add('selected-in'); btnCheckOut.classList.remove('selected-out');
+  clearError('grpOdoAction');
+});
+
+// Photo capture with compression
+btnOdoPhoto.addEventListener('click', function() { odoPhotoInput.click(); });
+odoPhotoInput.addEventListener('change', function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  clearError('grpOdoPhoto');
+  compressPhoto(file, function(base64) {
+    odoPhotoData = base64;
+    odoPhotoImg.src = base64;
+    odoPhotoPreview.style.display = 'block';
+    btnOdoRetake.style.display = 'inline-block';
+    btnOdoPhoto.classList.add('has-photo');
+    btnOdoPhoto.textContent = '\u2713 Photo Captured';
+  });
+});
+btnOdoRetake.addEventListener('click', function() {
+  odoPhotoData = ''; odoPhotoInput.value = '';
+  odoPhotoPreview.style.display = 'none'; odoPhotoImg.src = '';
+  btnOdoRetake.style.display = 'none';
+  btnOdoPhoto.classList.remove('has-photo');
+  btnOdoPhoto.innerHTML = '&#x1F4F7; TAKE ODOMETER PHOTO';
+});
+
+function compressPhoto(file, callback) {
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    var img = new Image();
+    img.onload = function() {
+      var canvas = document.createElement('canvas');
+      var maxDim = 1200;
+      var w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      canvas.width = w; canvas.height = h;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      callback(canvas.toDataURL('image/jpeg', 0.75));
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// Submit
+odoKmInput.addEventListener('input', function() { clearError('grpOdoKm'); });
+
+btnOdoSubmit.addEventListener('click', async function() {
+  let v = true;
+  if (!odoHubSelect.value) { setError('grpOdoHub','Please select a hub'); v = false; }
+  if (!odoRiderSelect.value) { setError('grpOdoRider','Please select a rider'); v = false; }
+  if (!odoAction) { setError('grpOdoAction','Please select Check In or Check Out'); v = false; }
+  var km = odoKmInput.value.trim();
+  if (!km || isNaN(Number(km)) || Number(km) < 0) { setError('grpOdoKm','Please enter a valid odometer reading'); v = false; }
+  if (!odoPhotoData) { setError('grpOdoPhoto','Please take an odometer photo'); v = false; }
+  if (!v) { showToast('Please fill in all required fields','error'); return; }
+
+  btnOdoSubmit.disabled = true;
+  btnOdoSubmit.innerHTML = '<span class="spinner"></span> Uploading\u2026';
+  try {
+    var payload = { action:'submitOdometer', hub:odoHubSelect.value, riderName:odoRiderSelect.value, action_type:odoAction, odometerKm:Number(km), photoData:odoPhotoData };
+    var r = await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) });
+    var d = await r.json();
+    if (d.success) {
+      showToast(d.message||'Odometer recorded!','success',4000);
+      // Reset form
+      odoHubSelect.value = ''; odoRiderSelect.innerHTML = '<option value="">-- Select rider --</option>';
+      odoAction = ''; btnCheckOut.classList.remove('selected-out'); btnCheckIn.classList.remove('selected-in');
+      odoKmInput.value = '';
+      odoPhotoData = ''; odoPhotoInput.value = ''; odoPhotoPreview.style.display = 'none'; odoPhotoImg.src = '';
+      btnOdoRetake.style.display = 'none'; btnOdoPhoto.classList.remove('has-photo');
+      btnOdoPhoto.innerHTML = '&#x1F4F7; TAKE ODOMETER PHOTO';
+    } else {
+      showToast(d.message||'Submission failed.','error',5000);
+    }
+  } catch(e) {
+    if (e.name==='TypeError') showToast('Network error. Check your connection.','error',5000);
+    else showToast('Something went wrong. Please try again.','error',5000);
+  } finally {
+    btnOdoSubmit.disabled = false;
+    btnOdoSubmit.innerHTML = 'SUBMIT ODOMETER';
+  }
+});
 </script>
 </body>
 </html>
