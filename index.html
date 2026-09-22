@@ -411,6 +411,9 @@ function updateRiderDropdown(hub) {
   var p = getRiderProfile();
   if (p) {
     hubSelect.value = p.hub || '';
+    // Put the saved name directly in the rider dropdown so it shows immediately
+    riderSelect.innerHTML = '<option value="' + p.name + '">' + p.name + '</option>';
+    riderSelect.value = p.name;
     showProfileSaved(p.name);
   }
 })();
