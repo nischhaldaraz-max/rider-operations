@@ -377,8 +377,12 @@ function populateHubDropdown(hubs) {
 
 function updateRiderDropdown(hub) {
   riderSelect.innerHTML = '';
-  if (!hub || !cachedRiderData.riders[hub]) {
+  if (!hub) {
     riderSelect.innerHTML = '<option value="">-- Select hub first --</option>';
+    return;
+  }
+  if (!cachedRiderData.riders[hub]) {
+    riderSelect.innerHTML = '<option value="">-- Tap ↻ to load rider names --</option>';
     return;
   }
   var defaultOpt = document.createElement('option');
@@ -401,16 +405,14 @@ function updateRiderDropdown(hub) {
     reasonGroupBtns.appendChild(btn);
   });
   reasonSectionClose.addEventListener('click', closeReasonSection);
-  // Fetch rider profiles from Google Sheet, then restore saved profile
-  fetchRiderProfiles().then(function() {
-    var p = getRiderProfile();
-    if (p) {
-      hubSelect.value = p.hub || '';
-      updateRiderDropdown(p.hub);
-      riderSelect.value = p.name || '';
-      showProfileSaved(p.name);
-    }
-  });
+  // Populate hub dropdown from static list on load
+  populateHubDropdown(HUB_OPTIONS);
+  // Restore saved profile
+  var p = getRiderProfile();
+  if (p) {
+    hubSelect.value = p.hub || '';
+    showProfileSaved(p.name);
+  }
 })();
 
 function selectGroup(idx) {
