@@ -141,6 +141,12 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .odo-note-toggle.open { border-style: solid; border-color: var(--primary); color: var(--primary); background: #e8f0fe; }
 .odo-note-panel { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, opacity 0.25s ease; opacity: 0; }
 .odo-note-panel.open { max-height: 300px; opacity: 1; }
+.profile-hub-row { display: flex; gap: 8px; align-items: center; }
+.profile-hub-row select { flex: 1; }
+.profile-refresh-btn { width: 44px; height: 44px; flex-shrink: 0; font-size: 22px; border: 1.5px solid var(--border); border-radius: 8px; background: #fff; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
+.profile-refresh-btn:active { transform: scale(0.93); background: #e8f0fe; border-color: var(--primary); color: var(--primary); }
+.profile-refresh-btn.spinning { animation: spin 0.8s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .form-group.error textarea { border-color: var(--error); background: #fce8e6; }
 </style>
 </head>
@@ -175,13 +181,16 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
     <h3>&#x1F464; Rider Profile</h3>
     <div class="form-group" id="grpHub">
       <label>Hub</label>
-      <select id="hubSelect"><option value="">-- Select hub --</option></select>
+      <div class="profile-hub-row">
+        <select id="hubSelect"><option value="">-- Select hub --</option></select>
+        <button type="button" class="profile-refresh-btn" id="btnRefreshProfiles" title="Refresh rider list">&#x21BB;</button>
+      </div>
       <div class="error-msg">Please select your hub</div>
     </div>
     <div class="form-group" id="grpRiderName">
       <label>Name</label>
-      <input type="text" id="riderName" placeholder="Please enter your name">
-      <div class="error-msg">Please enter your name</div>
+      <select id="riderSelect"><option value="">-- Select hub first --</option></select>
+      <div class="error-msg">Please select your name</div>
     </div>
     <button class="btn btn-primary" id="btnSaveProfile">SAVE PROFILE</button>
     <div class="hint" id="profileSavedHint" style="display:none;">&#x2713; Profile saved on this device</div>
@@ -259,10 +268,10 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
     <div class="form-group" id="grpOdoAction">
       <label>Action</label>
       <div class="odo-action-btns">
-        <button type="button" class="odo-action-btn" id="btnCheckOut">CHECK OUT<br><span class="odo-btn-hint">(moving out to deliver or pickup / shift start)</span></button>
-        <button type="button" class="odo-action-btn" id="btnCheckIn">CHECK IN<br><span class="odo-btn-hint">(coming back to hub / shift end)</span></button>
+        <button type="button" class="odo-action-btn" id="btnCheckOut">START<br><span class="odo-btn-hint">(shift start / moving out to deliver or pickup)</span></button>
+        <button type="button" class="odo-action-btn" id="btnCheckIn">END<br><span class="odo-btn-hint">(shift end / coming back to hub)</span></button>
       </div>
-      <div class="error-msg">Please select Check In or Check Out</div>
+      <div class="error-msg">Please select Start or End</div>
     </div>
     <div class="form-group" id="grpOdoKm">
       <label>Odometer Reading (KM)</label>
@@ -329,7 +338,8 @@ const trackingInput = $('trackingNumber'), statusSelect = $('statusSelect'), rem
 const reasonTrigger = $('reasonTrigger'), reasonDropdown = $('reasonDropdown'), reasonSearchInput = $('reasonSearchInput'), reasonList = $('reasonList'), reasonSelectWrap = $('reasonSelectWrap');
 const reasonSection = $('reasonSection'), reasonSectionTitle = $('reasonSectionTitle'), reasonSectionClose = $('reasonSectionClose'), reasonGroupBtns = $('reasonGroupBtns');
 let selectedReasonGroup = null;
-const hubSelect = $('hubSelect'), riderNameInput = $('riderName'), btnSaveProfile = $('btnSaveProfile');
+const hubSelect = $('hubSelect'), riderSelect = $('riderSelect'), btnSaveProfile = $('btnSaveProfile');
+const btnRefreshProfiles = $('btnRefreshProfiles');
 const profileSavedHint = $('profileSavedHint'), homeGreeting = $('homeGreeting');
 const otpTrackingInput = $('otpTrackingNumber'), otpCodeInput = $('otpCode'), btnVerifyOtp = $('btnVerifyOtp');
 const otpResult = $('otpResult'), otpResultIcon = $('otpResultIcon'), otpResultTitle = $('otpResultTitle'), otpResultMsg = $('otpResultMsg');
@@ -337,8 +347,50 @@ const btnOtpReset = $('btnOtpReset');
 const scannerOverlay = $('scannerOverlay'), scannerVideo = $('scannerVideo'), scannerStatus = $('scannerStatus');
 const toastEl = $('toast');
 
+let cachedRiderData = { hubs: [], riders: {} };
+
+async function fetchRiderProfiles() {
+  btnRefreshProfiles.classList.add('spinning');
+  try {
+    var r = await fetch(APPS_SCRIPT_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({action:'getRiderProfiles'}) });
+    var d = await r.json();
+    if (d.success && d.hubs && d.hubs.length > 0) {
+      cachedRiderData = { hubs: d.hubs, riders: d.riders };
+      populateHubDropdown(d.hubs);
+      return true;
+    } else {
+      populateHubDropdown(HUB_OPTIONS);
+      return false;
+    }
+  } catch(e) {
+    populateHubDropdown(HUB_OPTIONS);
+    return false;
+  } finally {
+    btnRefreshProfiles.classList.remove('spinning');
+  }
+}
+
+function populateHubDropdown(hubs) {
+  hubSelect.innerHTML = '<option value="">-- Select hub --</option>';
+  hubs.forEach(function(h) { var o = document.createElement('option'); o.value = h; o.textContent = h; hubSelect.appendChild(o); });
+}
+
+function updateRiderDropdown(hub) {
+  riderSelect.innerHTML = '';
+  if (!hub || !cachedRiderData.riders[hub]) {
+    riderSelect.innerHTML = '<option value="">-- Select hub first --</option>';
+    return;
+  }
+  var defaultOpt = document.createElement('option');
+  defaultOpt.value = '';
+  defaultOpt.textContent = '-- Select your name --';
+  riderSelect.appendChild(defaultOpt);
+  cachedRiderData.riders[hub].forEach(function(n) {
+    var o = document.createElement('option'); o.value = n; o.textContent = n; riderSelect.appendChild(o);
+  });
+}
+
 (function init() {
-  HUB_OPTIONS.forEach(h => { const o = document.createElement('option'); o.value = h; o.textContent = h; hubSelect.appendChild(o); });
   REASON_OPTIONS.forEach((grp, idx) => {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -349,8 +401,16 @@ const toastEl = $('toast');
     reasonGroupBtns.appendChild(btn);
   });
   reasonSectionClose.addEventListener('click', closeReasonSection);
-  const p = getRiderProfile();
-  if (p) { hubSelect.value = p.hub || ''; riderNameInput.value = p.name || ''; showProfileSaved(p.name); }
+  // Fetch rider profiles from Google Sheet, then restore saved profile
+  fetchRiderProfiles().then(function() {
+    var p = getRiderProfile();
+    if (p) {
+      hubSelect.value = p.hub || '';
+      updateRiderDropdown(p.hub);
+      riderSelect.value = p.name || '';
+      showProfileSaved(p.name);
+    }
+  });
 })();
 
 function selectGroup(idx) {
@@ -422,10 +482,11 @@ function showToast(msg, type, duration) { type = type || 'info'; duration = dura
 
 function getRiderProfile() { try { const r = localStorage.getItem(RIDER_PROFILE_KEY); if (!r) return null; const p = JSON.parse(r); return (p && p.hub && p.name) ? p : null; } catch(e) { return null; } }
 function showProfileSaved(n) { profileSavedHint.style.display = 'block'; homeGreeting.textContent = 'Welcome, ' + n; }
-function saveRiderProfile() { const h = hubSelect.value, n = riderNameInput.value.trim(); let v = true; if (!h) { setError('grpHub','Please select your hub'); v = false; } if (!n) { setError('grpRiderName','Please enter your name'); v = false; } if (!v) { showToast('Please complete your rider profile','error'); return; } localStorage.setItem(RIDER_PROFILE_KEY, JSON.stringify({hub:h,name:n})); showProfileSaved(n); showToast('Profile saved','success'); }
-hubSelect.addEventListener('change', () => clearError('grpHub'));
-riderNameInput.addEventListener('input', () => clearError('grpRiderName'));
+function saveRiderProfile() { const h = hubSelect.value, n = riderSelect.value; let v = true; if (!h) { setError('grpHub','Please select your hub'); v = false; } if (!n) { setError('grpRiderName','Please select your name'); v = false; } if (!v) { showToast('Please complete your rider profile','error'); return; } localStorage.setItem(RIDER_PROFILE_KEY, JSON.stringify({hub:h,name:n})); showProfileSaved(n); showToast('Profile saved','success'); }
+hubSelect.addEventListener('change', function() { clearError('grpHub'); updateRiderDropdown(hubSelect.value); });
+riderSelect.addEventListener('change', () => clearError('grpRiderName'));
 btnSaveProfile.addEventListener('click', saveRiderProfile);
+btnRefreshProfiles.addEventListener('click', async function() { await fetchRiderProfiles(); var hub = hubSelect.value; if (hub) updateRiderDropdown(hub); var p = getRiderProfile(); if (p && hub === p.hub) riderSelect.value = p.name || ''; showToast('Rider list refreshed','success'); });
 
 let scannerStream = null, scannerAnimFrame = null, scannerActive = false, zxingReader = null, scanTarget = null;
 async function openScannerFor(tid) {
@@ -617,7 +678,7 @@ btnOdoSubmit.addEventListener('click', async function() {
   if (!profile) { showToast('Please set up your rider profile on the Home page first','error',4500); navigateTo('pageHome'); return; }
 
   let v = true;
-  if (!odoAction) { setError('grpOdoAction','Please select Check In or Check Out'); v = false; }
+  if (!odoAction) { setError('grpOdoAction','Please select Start or End'); v = false; }
   var km = odoKmInput.value.trim();
   if (!km || isNaN(Number(km)) || Number(km) < 0) { setError('grpOdoKm','Please enter a valid odometer reading'); v = false; }
   if (!odoPhotoData) { setError('grpOdoPhoto','Please take an odometer photo'); v = false; }
