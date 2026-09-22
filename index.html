@@ -471,7 +471,7 @@ document.addEventListener('click', function(e) { if (!reasonSelectWrap.contains(
 
 function openMenu() { menuOverlay.classList.add('open'); sideMenu.classList.add('open'); }
 function closeMenu() { menuOverlay.classList.remove('open'); sideMenu.classList.remove('open'); }
-function navigateTo(pid) { pages.forEach(p => p.classList.remove('active')); const t = $(pid); if (t) t.classList.add('active'); menuItems.forEach(li => li.classList.toggle('active', li.dataset.page === pid)); closeMenu(); }
+function navigateTo(pid) { pages.forEach(p => p.classList.remove('active')); const t = $(pid); if (t) t.classList.add('active'); menuItems.forEach(li => li.classList.toggle('active', li.dataset.page === pid)); closeMenu(); if (pid === 'pageOdometer') showOdoProfile(); }
 $('btnMenuOpen').addEventListener('click', openMenu);
 $('btnMenuClose').addEventListener('click', closeMenu);
 menuOverlay.addEventListener('click', e => { if (e.target === menuOverlay) closeMenu(); });
