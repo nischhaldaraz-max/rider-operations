@@ -491,7 +491,7 @@ function saveRiderProfile() { const h = hubSelect.value, n = riderSelect.value; 
 hubSelect.addEventListener('change', function() { clearError('grpHub'); updateRiderDropdown(hubSelect.value); });
 riderSelect.addEventListener('change', () => clearError('grpRiderName'));
 btnSaveProfile.addEventListener('click', saveRiderProfile);
-btnRefreshProfiles.addEventListener('click', async function() { await fetchRiderProfiles(); var hub = hubSelect.value; if (hub) updateRiderDropdown(hub); var p = getRiderProfile(); if (p && hub === p.hub) riderSelect.value = p.name || ''; showToast('Rider list refreshed','success'); });
+btnRefreshProfiles.addEventListener('click', async function() { var savedHub = hubSelect.value || (getRiderProfile() || {}).hub || ''; await fetchRiderProfiles(); hubSelect.value = savedHub; updateRiderDropdown(savedHub); var p = getRiderProfile(); if (p && savedHub === p.hub) riderSelect.value = p.name || ''; showToast('Rider list refreshed','success'); });
 
 let scannerStream = null, scannerAnimFrame = null, scannerActive = false, zxingReader = null, scanTarget = null;
 async function openScannerFor(tid) {
