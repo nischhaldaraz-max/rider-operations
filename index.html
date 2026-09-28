@@ -427,6 +427,7 @@ function selectGroup(idx) {
   closeReasonDropdown();
   reasonGroupBtns.querySelectorAll('.reason-group-btn').forEach(function(b, i) { b.classList.toggle('active', i === idx); });
   if (grp.items.length === 0) {
+    statusSelect.value = grp.group;
     reasonSection.classList.remove('show');
     clearError('grpStatus');
     remarksInput.focus();
