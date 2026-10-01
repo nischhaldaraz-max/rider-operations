@@ -61,8 +61,14 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .scanner-reticle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 260px; height: 140px; border: 2px solid rgba(255,255,255,0.7); border-radius: 12px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.4); }
 .scanner-reticle::after { content: ''; position: absolute; left: 8px; right: 8px; top: 50%; height: 2px; background: var(--primary); animation: scanLine 1.8s ease-in-out infinite; }
 @keyframes scanLine { 0%, 100% { transform: translateY(-30px); opacity: 0.5; } 50% { transform: translateY(30px); opacity: 1; } }
-.scanner-hint { text-align: center; color: #fff; padding: 16px; font-size: 14px; opacity: 0.8; }
+.scanner-hint { text-align: center; color: #fff; padding: 8px; font-size: 13px; opacity: 0.8; }
 .scanner-status { text-align: center; color: #ff0; padding: 8px; font-size: 13px; min-height: 32px; }
+.scanner-controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; z-index: 3; }
+.scanner-ctrl-btn { width: 48px; height: 48px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); background: rgba(0,0,0,0.5); color: #fff; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.2s, border-color 0.2s; }
+.scanner-ctrl-btn:active { background: rgba(255,255,255,0.2); }
+.scanner-ctrl-btn.active { background: rgba(255,255,0,0.3); border-color: #ff0; }
+.scanner-footer { padding: 12px 16px; background: rgba(0,0,0,0.8); }
+.scanner-manual-btn { margin-bottom: 8px; }
 .toast { position: fixed; bottom: 24px; left: 16px; right: 16px; padding: 14px 18px; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 500; z-index: 500; transform: translateY(100px); opacity: 0; transition: transform 0.3s, opacity 0.3s; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
 .toast.show { transform: translateY(0); opacity: 1; }
 .toast.success { background: var(--success); }
@@ -311,9 +317,17 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
   <div class="scanner-video-wrap">
     <video id="scannerVideo" autoplay playsinline muted></video>
     <div class="scanner-reticle"></div>
+    <div class="scanner-controls">
+      <button class="scanner-ctrl-btn" id="btnTorch" title="Toggle flashlight">🔦</button>
+      <button class="scanner-ctrl-btn" id="btnZoomIn" title="Zoom in">+</button>
+      <button class="scanner-ctrl-btn" id="btnZoomOut" title="Zoom out">−</button>
+    </div>
   </div>
   <div class="scanner-status" id="scannerStatus">Point camera at a barcode</div>
-  <div class="scanner-hint">Align the barcode within the frame</div>
+  <div class="scanner-footer">
+    <button class="btn btn-secondary scanner-manual-btn" id="btnManualEntry">Enter Manually</button>
+    <div class="scanner-hint">Tap video to focus • Align barcode in frame</div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -494,17 +508,477 @@ riderSelect.addEventListener('change', () => clearError('grpRiderName'));
 btnSaveProfile.addEventListener('click', saveRiderProfile);
 btnRefreshProfiles.addEventListener('click', async function() { var savedHub = hubSelect.value || (getRiderProfile() || {}).hub || ''; await fetchRiderProfiles(); hubSelect.value = savedHub; updateRiderDropdown(savedHub); var p = getRiderProfile(); if (p && savedHub === p.hub) riderSelect.value = p.name || ''; showToast('Rider list refreshed','success'); });
 
-let scannerStream = null, scannerAnimFrame = null, scannerActive = false, zxingReader = null, scanTarget = null;
+// ========== SCANNER MODULE - FULLY OPTIMIZED ==========
+let scannerStream = null, scannerAnimFrame = null, scannerActive = false, zxingReader = null;
+let scanTarget = null, scannerWatchdog = null, scannerInitialized = false;
+let lastScanTime = 0, lastScanValue = null, currentZoom = 1, torchEnabled = false;
+let cameraCapabilities = null, detectionPaused = false;
+
+// IndexedDB for caching ZXing library
+const ZXING_CACHE_DB = 'zxing_cache';
+const ZXING_CACHE_STORE = 'scripts';
+const ZXING_CDN_SOURCES = [
+  'https://unpkg.com/@aspect-build/rules_lint@0.0.0-20240313-aspect-zxing-wasm/dist/zxing-wasm.min.js',
+  'https://cdn.jsdelivr.net/npm/@aspect-build/rules_lint@0.0.0-20240313-aspect-zxing-wasm/dist/zxing-wasm.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/zxing-wasm/0.0.0-20240313-aspect-zxing-wasm/dist/zxing-wasm.min.js'
+];
+
+// Preload ZXing when app starts
+(async function preloadScanner() {
+  if (typeof ZXingBrowser !== 'undefined') return;
+  try {
+    await loadZXingFromCacheOrCDN();
+    console.log('Scanner library preloaded');
+  } catch(e) {
+    console.warn('Scanner preload failed, will retry on demand');
+  }
+})();
+
+// Pause detection when tab is hidden
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    detectionPaused = true;
+  } else {
+    detectionPaused = false;
+    if (scannerActive && scannerInitialized) {
+      // Resume scanning
+      if ('BarcodeDetector' in window) scanWithBarcodeDetector();
+      else if (typeof ZXingBrowser !== 'undefined') scanWithZXing();
+    }
+  }
+});
+
 async function openScannerFor(tid) {
   scanTarget = tid;
-  try { scannerStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}}); scannerVideo.srcObject = scannerStream; scannerOverlay.classList.add('open'); scannerStatus.textContent = 'Point camera at a barcode'; scannerActive = true; await scannerVideo.play(); startScanning(); }
-  catch(err) { if (err.name==='NotAllowedError'||err.name==='PermissionDeniedError') showToast('Camera permission denied. Please allow camera access.','error',5000); else if (err.name==='NotFoundError') showToast('No camera found.','error'); else if (err.name==='NotReadableError') showToast('Camera is being used by another app.','error',5000); else showToast('Could not open camera. Enter tracking number manually.','error',5000); }
+  scannerStatus.textContent = 'Starting camera...';
+  
+  // Reset state
+  currentZoom = 1;
+  torchEnabled = false;
+  updateTorchButton();
+  
+  try {
+    // Adaptive resolution based on device capability
+    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+    const resolution = isMobile ? { width: { ideal: 1280 }, height: { ideal: 720 } } : { width: { ideal: 1920 }, height: { ideal: 1080 } };
+    
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', ...resolution }
+    });
+    
+    // Get camera capabilities for zoom/torch
+    const track = scannerStream.getVideoTracks()[0];
+    cameraCapabilities = track.getCapabilities ? track.getCapabilities() : {};
+    
+    scannerVideo.srcObject = scannerStream;
+    scannerOverlay.classList.add('open');
+    scannerStatus.textContent = 'Initializing scanner...';
+    
+    // Wait for video to be ready
+    await new Promise((resolve, reject) => {
+      scannerVideo.onloadedmetadata = () => {
+        scannerVideo.play().then(resolve).catch(reject);
+      };
+      scannerVideo.onerror = () => reject(new Error('Video load failed'));
+      setTimeout(() => reject(new Error('Video timeout')), 5000);
+    });
+    
+    scannerActive = true;
+    await initializeScanner(3);
+    startScannerWatchdog();
+    
+  } catch(err) {
+    scannerActive = false;
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      showToast('Camera permission denied. Please allow camera access.', 'error', 5000);
+    } else if (err.name === 'NotFoundError') {
+      showToast('No camera found.', 'error');
+    } else if (err.name === 'NotReadableError') {
+      showToast('Camera is being used by another app.', 'error', 5000);
+    } else {
+      showToast('Could not open camera. Enter tracking number manually.', 'error', 5000);
+    }
+    closeScanner();
+  }
 }
-function closeScanner() { scannerActive = false; scannerOverlay.classList.remove('open'); if (scannerAnimFrame) { cancelAnimationFrame(scannerAnimFrame); scannerAnimFrame = null; } if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; } scannerVideo.srcObject = null; if (zxingReader) try { zxingReader.reset(); } catch(e) {} }
-function startScanning() { if (typeof ZXingBrowser !== 'undefined') scanWithZXing(); else if ('BarcodeDetector' in window) scanWithBarcodeDetector(); else loadZXingFallback(); }
-function scanWithZXing() { try { const cr = new ZXingBrowser.BrowserMultiFormatReader(); zxingReader = cr; cr.decodeFromVideoDevice(null, scannerVideo, (r) => { if (r && scannerActive) onBarcodeDetected(r.getText()); }); } catch(e) { if ('BarcodeDetector' in window) scanWithBarcodeDetector(); else scannerStatus.textContent = 'Auto-scan unavailable - enter manually'; } }
-async function scanWithBarcodeDetector() { let fmts = ['code_128','code_39','ean_13','ean_8','upc_a','upc_e','itf','codabar','qr_code','data_matrix']; try { const d = await BarcodeDetector.getSupportedFormats(); if (d.length > 0) fmts = d; } catch(e) {} const det = new BarcodeDetector({formats:fmts}); async function f() { if (!scannerActive) return; try { if (scannerVideo.readyState >= 2) { const b = await det.detect(scannerVideo); if (b.length > 0 && b[0].rawValue) { onBarcodeDetected(b[0].rawValue); return; } } } catch(e) {} scannerAnimFrame = requestAnimationFrame(f); } f(); }
-function loadZXingFallback() { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@aspect-build/rules_lint@0.0.0-20240313-aspect-zxing-wasm/dist/zxing-wasm.min.js'; s.onload = () => { if (typeof ZXingBrowser !== 'undefined') scanWithZXing(); else scannerStatus.textContent = 'Auto-scan unavailable - enter manually'; }; s.onerror = () => { scannerStatus.textContent = 'Auto-scan unavailable - enter manually'; }; document.head.appendChild(s); }
+
+async function initializeScanner(retries) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      scannerStatus.textContent = `Loading scanner (${attempt}/${retries})...`;
+      
+      // Try native BarcodeDetector first (faster, no network needed)
+      if ('BarcodeDetector' in window) {
+        await scanWithBarcodeDetector();
+        scannerInitialized = true;
+        scannerStatus.textContent = 'Point camera at a barcode';
+        return;
+      }
+      
+      // Try ZXing if already loaded
+      if (typeof ZXingBrowser !== 'undefined') {
+        await scanWithZXing();
+        scannerInitialized = true;
+        scannerStatus.textContent = 'Point camera at a barcode';
+        return;
+      }
+      
+      // Load ZXing with timeout and caching
+      await loadZXingFromCacheOrCDN(8000);
+      if (typeof ZXingBrowser !== 'undefined') {
+        await scanWithZXing();
+        scannerInitialized = true;
+        scannerStatus.textContent = 'Point camera at a barcode';
+        return;
+      }
+      
+      throw new Error('No scanner library available');
+      
+    } catch(e) {
+      console.warn(`Scanner init attempt ${attempt} failed:`, e.message);
+      if (attempt === retries) {
+        scannerStatus.textContent = 'Scanner unavailable - enter manually';
+        showToast('Auto-scan failed. Use "Enter Manually" button below.', 'error', 5000);
+      } else {
+        // Exponential backoff: 1s, 2s, 4s
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+      }
+    }
+  }
+}
+
+// IndexedDB caching for offline reliability
+function openCacheDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(ZXING_CACHE_DB, 1);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(ZXING_CACHE_STORE)) {
+        db.createObjectStore(ZXING_CACHE_STORE);
+      }
+    };
+  });
+}
+
+async function getCachedScript() {
+  try {
+    const db = await openCacheDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(ZXING_CACHE_STORE, 'readonly');
+      const store = tx.objectStore(ZXING_CACHE_STORE);
+      const req = store.get('zxing');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch(e) {
+    return null;
+  }
+}
+
+async function cacheScript(code) {
+  try {
+    const db = await openCacheDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(ZXING_CACHE_STORE, 'readwrite');
+      const store = tx.objectStore(ZXING_CACHE_STORE);
+      const req = store.put(code, 'zxing');
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch(e) {
+    console.warn('Failed to cache script:', e);
+  }
+}
+
+async function loadZXingFromCacheOrCDN(timeoutMs = 8000) {
+  // Try cache first
+  const cached = await getCachedScript();
+  if (cached) {
+    try {
+      eval(cached);
+      if (typeof ZXingBrowser !== 'undefined') return;
+    } catch(e) {
+      console.warn('Cached script eval failed, trying CDN');
+    }
+  }
+  
+  // Load from CDN with timeout
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('ZXing load timeout')), timeoutMs);
+    let loaded = false;
+    
+    function tryLoad(index) {
+      if (index >= ZXING_CDN_SOURCES.length || loaded) {
+        clearTimeout(timer);
+        if (!loaded) reject(new Error('All CDN sources failed'));
+        return;
+      }
+      
+      const script = document.createElement('script');
+      script.src = ZXING_CDN_SOURCES[index];
+      script.onload = async () => {
+        if (!loaded && typeof ZXingBrowser !== 'undefined') {
+          loaded = true;
+          clearTimeout(timer);
+          
+          // Cache the script for offline use
+          try {
+            const response = await fetch(ZXING_CDN_SOURCES[index]);
+            const code = await response.text();
+            await cacheScript(code);
+          } catch(e) {}
+          
+          resolve();
+        }
+      };
+      script.onerror = () => tryLoad(index + 1);
+      document.head.appendChild(script);
+    }
+    
+    tryLoad(0);
+  });
+}
+
+async function scanWithZXing() {
+  return new Promise((resolve, reject) => {
+    try {
+      const cr = new ZXingBrowser.BrowserMultiFormatReader();
+      zxingReader = cr;
+      
+      cr.decodeFromVideoDevice(null, scannerVideo, (result, error) => {
+        if (result && scannerActive && !detectionPaused) {
+          onBarcodeDetected(result.getText());
+        }
+      });
+      
+      setTimeout(resolve, 500);
+      
+    } catch(e) {
+      reject(e);
+    }
+  });
+}
+
+async function scanWithBarcodeDetector() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      let fmts = ['code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'itf', 'codabar', 'qr_code', 'data_matrix'];
+      
+      try {
+        const supported = await BarcodeDetector.getSupportedFormats();
+        if (supported.length > 0) fmts = supported;
+      } catch(e) {}
+      
+      const detector = new BarcodeDetector({ formats: fmts });
+      const FRAME_INTERVAL = 100; // 10fps instead of 60fps for better performance
+      
+      async function detectFrame() {
+        if (!scannerActive || detectionPaused) {
+          scannerAnimFrame = requestAnimationFrame(detectFrame);
+          return;
+        }
+        
+        const now = Date.now();
+        if (now - lastScanTime < FRAME_INTERVAL) {
+          scannerAnimFrame = requestAnimationFrame(detectFrame);
+          return;
+        }
+        
+        try {
+          if (scannerVideo.readyState >= 2) {
+            const barcodes = await detector.detect(scannerVideo);
+            
+            if (barcodes.length > 0 && barcodes[0].rawValue) {
+              onBarcodeDetected(barcodes[0].rawValue);
+              return;
+            }
+          }
+        } catch(e) {
+          console.warn('BarcodeDetector error:', e);
+        }
+        
+        lastScanTime = now;
+        scannerAnimFrame = requestAnimationFrame(detectFrame);
+      }
+      
+      detectFrame();
+      setTimeout(resolve, 300);
+      
+    } catch(e) {
+      reject(e);
+    }
+  });
+}
+
+function startScannerWatchdog() {
+  scannerWatchdog = setTimeout(() => {
+    if (scannerActive && !scannerInitialized) {
+      scannerStatus.textContent = 'Scanner slow - use manual entry';
+      showToast('Scanner is taking too long. Use "Enter Manually" button.', 'error', 5000);
+    }
+  }, 3000);
+}
+
+// Beep sound on successful scan
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 800;
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.1);
+  } catch(e) {}
+}
+
+function onBarcodeDetected(val) {
+  if (!scannerActive) return;
+  
+  // Prevent duplicate scans
+  const now = Date.now();
+  if (now - lastScanTime < 2000 && val === lastScanValue) return;
+  
+  const t = extractTrackingNumber(val);
+  if (!t) return;
+  
+  scannerActive = false;
+  lastScanTime = now;
+  lastScanValue = t;
+  
+  const inp = $(scanTarget);
+  if (inp) {
+    inp.value = t;
+    const g = inp.closest('.form-group');
+    if (g) g.classList.remove('error');
+  }
+  
+  // Feedback: vibration + beep
+  if (navigator.vibrate) navigator.vibrate(150);
+  playBeep();
+  
+  if (isValidTrackingNumber(t)) {
+    showToast('Barcode scanned: ' + (t.length > 25 ? t.slice(0, 25) + '...' : t), 'success');
+  } else {
+    if (navigator.vibrate) navigator.vibrate([150, 100, 150]);
+    showToast('Warning: "' + t + '" may be partial. Verify or rescan.', 'error', 5000);
+  }
+  
+  setTimeout(closeScanner, 400);
+}
+
+// Camera controls
+function updateTorchButton() {
+  const btn = $('btnTorch');
+  if (btn) {
+    btn.classList.toggle('active', torchEnabled);
+    btn.style.display = cameraCapabilities && cameraCapabilities.torch ? 'flex' : 'none';
+  }
+}
+
+async function toggleTorch() {
+  if (!scannerStream || !cameraCapabilities.torch) return;
+  
+  try {
+    const track = scannerStream.getVideoTracks()[0];
+    torchEnabled = !torchEnabled;
+    await track.applyConstraints({ advanced: [{ torch: torchEnabled }] });
+    updateTorchButton();
+  } catch(e) {
+    console.warn('Torch toggle failed:', e);
+    showToast('Flashlight not available', 'info');
+  }
+}
+
+async function adjustZoom(delta) {
+  if (!scannerStream || !cameraCapabilities.zoom) {
+    showToast('Zoom not available on this device', 'info');
+    return;
+  }
+  
+  try {
+    const track = scannerStream.getVideoTracks()[0];
+    const { min, max, step } = cameraCapabilities.zoom;
+    currentZoom = Math.max(min, Math.min(max, currentZoom + delta));
+    await track.applyConstraints({ advanced: [{ zoom: currentZoom }] });
+  } catch(e) {
+    console.warn('Zoom failed:', e);
+  }
+}
+
+async function tapToFocus(event) {
+  if (!scannerStream || !cameraCapabilities.focusMode) return;
+  
+  try {
+    const track = scannerStream.getVideoTracks()[0];
+    const rect = scannerVideo.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width;
+    const y = (event.clientY - rect.top) / rect.height;
+    
+    await track.applyConstraints({
+      advanced: [{ focusMode: 'single-shot', pointsOfInterest: [{ x, y }] }]
+    });
+    
+    // Visual feedback
+    scannerStatus.textContent = 'Focusing...';
+    setTimeout(() => {
+      if (scannerActive) scannerStatus.textContent = 'Point camera at a barcode';
+    }, 1000);
+  } catch(e) {
+    // Silently fail - focus not critical
+  }
+}
+
+function closeScanner() {
+  scannerActive = false;
+  scannerInitialized = false;
+  detectionPaused = false;
+  scannerOverlay.classList.remove('open');
+  
+  if (scannerWatchdog) {
+    clearTimeout(scannerWatchdog);
+    scannerWatchdog = null;
+  }
+  
+  if (scannerAnimFrame) {
+    cancelAnimationFrame(scannerAnimFrame);
+    scannerAnimFrame = null;
+  }
+  
+  if (scannerStream) {
+    scannerStream.getTracks().forEach(t => t.stop());
+    scannerStream = null;
+  }
+  
+  scannerVideo.srcObject = null;
+  cameraCapabilities = null;
+  
+  if (zxingReader) {
+    try { zxingReader.reset(); } catch(e) {}
+    zxingReader = null;
+  }
+}
+
+// Manual entry button
+$('btnManualEntry').addEventListener('click', () => {
+  closeScanner();
+  const inp = $(scanTarget);
+  if (inp) {
+    inp.focus();
+    showToast('Enter tracking number manually', 'info');
+  }
+});
+
+// Camera control buttons
+$('btnTorch').addEventListener('click', toggleTorch);
+$('btnZoomIn').addEventListener('click', () => adjustZoom(0.5));
+$('btnZoomOut').addEventListener('click', () => adjustZoom(-0.5));
+scannerVideo.addEventListener('click', tapToFocus);
 function extractTrackingNumber(raw) {
   var cleaned = raw.replace(/[,<>\s;|]/g, '');
   var m = cleaned.match(/[A-Z]{2,6}[A-Z0-9]*\d{4,}[A-Z0-9]*/g);
@@ -519,7 +993,6 @@ function isValidTrackingNumber(tn) {
   if (!tn || tn.length < 10) return false;
   return /^(DEX|TCS|UPA)[A-Z0-9]*\d{4,}[A-Z0-9]*$/i.test(tn) || /^[A-Z]{2,6}[A-Z0-9]*\d{4,}[A-Z0-9]*$/.test(tn);
 }
-function onBarcodeDetected(val) { if (!scannerActive) return; const t = extractTrackingNumber(val); if (!t) return; scannerActive = false; const inp = $(scanTarget); if (inp) { inp.value = t; const g = inp.closest('.form-group'); if (g) g.classList.remove('error'); } if (navigator.vibrate) navigator.vibrate(150); if (isValidTrackingNumber(t)) { showToast('Barcode scanned: '+(t.length>25?t.slice(0,25)+'...':t),'success'); } else { if (navigator.vibrate) navigator.vibrate([150,100,150]); showToast('Warning: "'+t+'" may be a partial scan. Please verify or rescan.','error',5000); } setTimeout(closeScanner, 400); }
 $('btnScan').addEventListener('click', () => openScannerFor('trackingNumber'));
 $('btnOtpScan').addEventListener('click', () => openScannerFor('otpTrackingNumber'));
 $('btnScanClose').addEventListener('click', closeScanner);
