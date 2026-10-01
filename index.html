@@ -818,7 +818,7 @@ function startScannerWatchdog() {
       scannerStatus.textContent = 'Scanner slow - use manual entry';
       showToast('Scanner is taking too long. Use "Enter Manually" button.', 'error', 5000);
     }
-  }, 3000);
+  }, 10000);
 }
 
 // Beep sound on successful scan
