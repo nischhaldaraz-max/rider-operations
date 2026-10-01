@@ -555,6 +555,7 @@ async function openScannerFor(tid) {
   // Reset state
   currentZoom = 1;
   torchEnabled = false;
+  lastScanValue = null;
   updateTorchButton();
   
   try {
