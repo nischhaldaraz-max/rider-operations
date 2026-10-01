@@ -511,8 +511,8 @@ btnRefreshProfiles.addEventListener('click', async function() { var savedHub = h
 // ========== SCANNER MODULE - FULLY OPTIMIZED ==========
 let scannerStream = null, scannerAnimFrame = null, scannerActive = false, zxingReader = null;
 let scanTarget = null, scannerWatchdog = null, scannerInitialized = false;
-let lastScanTime = 0, lastScanValue = null, currentZoom = 1, torchEnabled = false;
-let cameraCapabilities = null, detectionPaused = false;
+let lastDetectTime = 0, lastScanValue = null, currentZoom = 1, torchEnabled = false;
+let cameraCapabilities = null, detectionPaused = false, frameThrottleTime = 0;
 
 // IndexedDB for caching ZXing library
 const ZXING_CACHE_DB = 'zxing_cache';
@@ -541,6 +541,8 @@ document.addEventListener('visibilitychange', () => {
   } else {
     detectionPaused = false;
     if (scannerActive && scannerInitialized) {
+      // Cancel any existing frames before restarting
+      if (scannerAnimFrame) { cancelAnimationFrame(scannerAnimFrame); scannerAnimFrame = null; }
       // Resume scanning
       if ('BarcodeDetector' in window) scanWithBarcodeDetector();
       else if (typeof ZXingBrowser !== 'undefined') scanWithZXing();
@@ -556,6 +558,9 @@ async function openScannerFor(tid) {
   currentZoom = 1;
   torchEnabled = false;
   lastScanValue = null;
+  lastDetectTime = 0;
+  frameThrottleTime = 0;
+  if (scannerAnimFrame) { cancelAnimationFrame(scannerAnimFrame); scannerAnimFrame = null; }
   updateTorchButton();
   
   try {
@@ -745,17 +750,23 @@ async function loadZXingFromCacheOrCDN(timeoutMs = 8000) {
 async function scanWithZXing() {
   return new Promise((resolve, reject) => {
     try {
+      // Clean up old reader first
+      if (zxingReader) {
+        try { zxingReader.reset(); } catch(e) {}
+        zxingReader = null;
+      }
+
       const cr = new ZXingBrowser.BrowserMultiFormatReader();
       zxingReader = cr;
-      
+
       cr.decodeFromVideoDevice(null, scannerVideo, (result, error) => {
         if (result && scannerActive && !detectionPaused) {
           onBarcodeDetected(result.getText());
         }
       });
-      
+
       setTimeout(resolve, 500);
-      
+
     } catch(e) {
       reject(e);
     }
@@ -774,23 +785,22 @@ async function scanWithBarcodeDetector() {
       
       const detector = new BarcodeDetector({ formats: fmts });
       const FRAME_INTERVAL = 100; // 10fps instead of 60fps for better performance
-      
+
       async function detectFrame() {
-        if (!scannerActive || detectionPaused) {
-          scannerAnimFrame = requestAnimationFrame(detectFrame);
-          return;
-        }
-        
+        if (!scannerActive || detectionPaused) return; // STOP the loop, don't reschedule
+
         const now = Date.now();
-        if (now - lastScanTime < FRAME_INTERVAL) {
+        if (now - frameThrottleTime < FRAME_INTERVAL) {
           scannerAnimFrame = requestAnimationFrame(detectFrame);
           return;
         }
-        
+
+        frameThrottleTime = now;
+
         try {
           if (scannerVideo.readyState >= 2) {
             const barcodes = await detector.detect(scannerVideo);
-            
+
             if (barcodes.length > 0 && barcodes[0].rawValue) {
               onBarcodeDetected(barcodes[0].rawValue);
               return;
@@ -799,8 +809,7 @@ async function scanWithBarcodeDetector() {
         } catch(e) {
           console.warn('BarcodeDetector error:', e);
         }
-        
-        lastScanTime = now;
+
         scannerAnimFrame = requestAnimationFrame(detectFrame);
       }
       
@@ -840,16 +849,16 @@ function playBeep() {
 
 function onBarcodeDetected(val) {
   if (!scannerActive) return;
-  
-  // Prevent duplicate scans
+
+  // Prevent duplicate scans within 2 seconds
   const now = Date.now();
-  if (now - lastScanTime < 2000 && val === lastScanValue) return;
-  
+  if (now - lastDetectTime < 2000 && val === lastScanValue) return;
+
   const t = extractTrackingNumber(val);
   if (!t) return;
-  
+
   scannerActive = false;
-  lastScanTime = now;
+  lastDetectTime = now;
   lastScanValue = t;
   
   const inp = $(scanTarget);
