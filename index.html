@@ -932,6 +932,7 @@ function onBarcodeDetected(val) {
   const inp = $(scanTarget);
   if (inp) {
     inp.value = t;
+    inp.dispatchEvent(new Event('input'));
     const g = inp.closest('.form-group');
     if (g) g.classList.remove('error');
   }
