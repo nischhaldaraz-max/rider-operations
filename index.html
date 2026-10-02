@@ -352,7 +352,12 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
         <div class="error-msg">Please enter a valid tracking number</div>
       </div>
 
-      <!-- QR + Amount + Txn (appears together after valid tracking number) -->
+      <!-- Package match confirmation -->
+      <div class="cod-match-confirm" id="codMatchConfirm" style="display:none;">
+        <button class="btn btn-primary" id="btnCodMatchConfirm" style="background:var(--success);">&#x2705; YES — matches package</button>
+      </div>
+
+      <!-- QR + Amount + Txn (appears after rider confirms match) -->
       <div class="cod-payment-section" id="codPaymentSection" style="display:none;">
         <div class="cod-qr-display">
           <p style="font-size:13px;font-weight:600;text-align:center;margin-bottom:8px;">Show this QR to customer:</p>
@@ -1349,26 +1354,32 @@ codQrInput.addEventListener('change', function() {
 // Scan button
 btnCodScan.addEventListener('click', () => openScannerFor('codTrackingNumber'));
 
-// Tracking number validation - show payment section when valid
+// Match confirmation button reference
+const codMatchConfirm = $('codMatchConfirm'), btnCodMatchConfirm = $('btnCodMatchConfirm');
+
+// Tracking number validation - show match confirmation button when valid
 codTrackingInput.addEventListener('input', function() {
   clearError('grpCodTracking');
+  codPaymentSection.style.display = 'none';
   const val = this.value.trim().toUpperCase();
   if (val.length >= 10 && /[A-Z]{2,6}/.test(val) && /\d{4,}/.test(val)) {
-    showCodPaymentSection();
+    codMatchConfirm.style.display = 'block';
   } else {
-    codPaymentSection.style.display = 'none';
+    codMatchConfirm.style.display = 'none';
   }
 });
 
-function showCodPaymentSection() {
+// Rider confirms TN matches physical package → show payment section
+btnCodMatchConfirm.addEventListener('click', function() {
   if (!codQrData) {
     showToast('Please upload your eSewa QR code first', 'error', 4000);
     return;
   }
+  codMatchConfirm.style.display = 'none';
   codQrDisplayImg.src = codQrData;
   codPaymentSection.style.display = 'block';
   codAmountInput.focus();
-}
+});
 
 // Clear errors on input
 codAmountInput.addEventListener('input', () => clearError('grpCodAmount'));
@@ -1415,6 +1426,7 @@ btnCodSubmit.addEventListener('click', async function() {
       codAmountInput.value = '';
       codTxnInput.value = '';
       codPaymentSection.style.display = 'none';
+      codMatchConfirm.style.display = 'none';
     } else {
       showToast(d.message || 'Submission failed.', 'error', 5000);
     }
