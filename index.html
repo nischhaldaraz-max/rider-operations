@@ -154,6 +154,15 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .profile-refresh-btn.spinning { animation: spin 0.8s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .form-group.error textarea { border-color: var(--error); background: #fce8e6; }
+.cod-qr-upload-wrap { text-align: center; }
+.cod-qr-preview { display: none; margin: 12px auto; max-width: 200px; }
+.cod-qr-preview img { width: 100%; border-radius: 8px; border: 2px solid var(--border); }
+.cod-qr-preview.has-image { display: block; }
+.cod-qr-change { display: none; margin: 8px auto; background: none; border: none; color: var(--primary); font-size: 13px; cursor: pointer; text-decoration: underline; }
+.cod-qr-change.visible { display: block; }
+.cod-qr-display { background: #f8f9fa; border-radius: var(--radius); padding: 16px; margin-bottom: 18px; text-align: center; }
+.cod-qr-display-img { max-width: 220px; margin: 0 auto; }
+.cod-qr-display-img img { width: 100%; border-radius: 8px; border: 2px solid var(--success); }
 </style>
 </head>
 <body>
@@ -174,6 +183,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
     <li data-page="pageStatus">&#x1F4E6; Package Status</li>
     <li data-page="pageOtp">&#x1F510; ATM OTP Verification</li>
     <li data-page="pageOdometer">&#x1F3CD;&#xFE0F; Rider Odometer</li>
+    <li data-page="pageCod">&#x1F4B3; COD Payment (eSewa)</li>
   </ul>
 </nav>
 
@@ -306,6 +316,64 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
       </div>
     </div>
     <button class="btn odo-submit" id="btnOdoSubmit">SUBMIT ODOMETER</button>
+  </div>
+</div>
+
+<div class="page" id="pageCod">
+  <div class="card">
+    <h3>&#x1F4B3; COD Payment (eSewa)</h3>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Record eSewa COD collections for reimbursement tracking.</p>
+
+    <!-- QR Upload Setup (one-time) -->
+    <div class="cod-qr-setup" id="codQrSetup">
+      <div class="form-group" id="grpCodQr">
+        <label>Your eSewa QR Code</label>
+        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">Upload once — customers will scan this to pay you.</p>
+        <div class="cod-qr-upload-wrap">
+          <input type="file" id="codQrInput" accept="image/*" style="display:none;">
+          <button type="button" class="btn btn-secondary" id="btnCodQrUpload">&#x1F4F7; UPLOAD QR CODE</button>
+          <div class="cod-qr-preview" id="codQrPreview"><img id="codQrImg" alt="Your eSewa QR"></div>
+          <button type="button" class="cod-qr-change" id="btnCodQrChange">Change QR</button>
+        </div>
+        <div class="error-msg">Please upload your eSewa QR code</div>
+      </div>
+    </div>
+
+    <!-- COD Payment Form -->
+    <div class="cod-form" id="codForm">
+      <div class="form-group" id="grpCodTracking">
+        <label>Tracking Number</label>
+        <div class="input-row">
+          <input type="text" id="codTrackingNumber" placeholder="Scan or enter tracking number" autocomplete="off" autocapitalize="characters">
+          <button type="button" class="btn btn-secondary" id="btnCodScan" style="width:auto;padding:12px 16px;white-space:nowrap;">&#x1F4F7; SCAN</button>
+        </div>
+        <div class="error-msg">Please enter a valid tracking number</div>
+      </div>
+
+      <!-- QR Display + Amount -->
+      <div class="cod-payment-section" id="codPaymentSection" style="display:none;">
+        <div class="cod-qr-display">
+          <p style="font-size:13px;font-weight:600;text-align:center;margin-bottom:8px;">Show this QR to customer:</p>
+          <div class="cod-qr-display-img"><img id="codQrDisplayImg" alt="Rider eSewa QR"></div>
+          <p style="font-size:12px;text-align:center;color:var(--text-secondary);margin-top:6px;">Customer scans with their eSewa app to pay</p>
+        </div>
+
+        <div class="form-group" id="grpCodAmount">
+          <label>COD Amount (Rs.)</label>
+          <input type="number" id="codAmount" placeholder="Enter amount collected" inputmode="numeric" min="0" step="1">
+          <div class="error-msg">Please enter the COD amount</div>
+        </div>
+
+        <div class="form-group" id="grpCodTxn">
+          <label>eSewa Transaction Code</label>
+          <input type="text" id="codTxnCode" placeholder="6-letter code from customer's eSewa" autocomplete="off" autocapitalize="characters" maxlength="10" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-size:20px;font-weight:700;">
+          <p class="hint">Ask customer to show their eSewa payment confirmation — enter the transaction code</p>
+          <div class="error-msg">Please enter the eSewa transaction code</div>
+        </div>
+
+        <button class="btn btn-submit" id="btnCodSubmit">SUBMIT COD PAYMENT</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1200,6 +1268,152 @@ btnOdoSubmit.addEventListener('click', async function() {
   } finally {
     btnOdoSubmit.disabled = false;
     btnOdoSubmit.innerHTML = 'SUBMIT ODOMETER';
+  }
+});
+
+// ========== COD PAYMENT (eSewa) MODULE ==========
+const COD_QR_KEY = 'codEsewaQr';
+const codQrInput = $('codQrInput'), codQrPreview = $('codQrPreview'), codQrImg = $('codQrImg');
+const btnCodQrUpload = $('btnCodQrUpload'), btnCodQrChange = $('btnCodQrChange');
+const codTrackingInput = $('codTrackingNumber'), btnCodScan = $('btnCodScan');
+const codPaymentSection = $('codPaymentSection'), codQrDisplayImg = $('codQrDisplayImg');
+const codAmountInput = $('codAmount'), codTxnInput = $('codTxnCode'), btnCodSubmit = $('btnCodSubmit');
+let codQrData = null;
+
+// Load saved QR on page init
+function loadCodQr() {
+  const saved = localStorage.getItem(COD_QR_KEY);
+  if (saved) {
+    codQrData = saved;
+    codQrImg.src = saved;
+    codQrPreview.classList.add('has-image');
+    btnCodQrUpload.style.display = 'none';
+    btnCodQrChange.classList.add('visible');
+  } else {
+    codQrData = null;
+    codQrImg.src = '';
+    codQrPreview.classList.remove('has-image');
+    btnCodQrUpload.style.display = '';
+    btnCodQrChange.classList.remove('visible');
+  }
+}
+loadCodQr();
+
+// QR upload handler
+btnCodQrUpload.addEventListener('click', () => codQrInput.click());
+btnCodQrChange.addEventListener('click', () => codQrInput.click());
+codQrInput.addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { showToast('Image too large. Please use a smaller image (max 2MB).', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const dataUrl = e.target.result;
+    // Compress image
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      const maxDim = 400;
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else { w = Math.round(w * maxDim / h); h = maxDim; }
+      }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL('image/jpeg', 0.85);
+      codQrData = compressed;
+      codQrImg.src = compressed;
+      codQrPreview.classList.add('has-image');
+      btnCodQrUpload.style.display = 'none';
+      btnCodQrChange.classList.add('visible');
+      localStorage.setItem(COD_QR_KEY, compressed);
+      showToast('eSewa QR saved', 'success');
+    };
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(file);
+  this.value = '';
+});
+
+// Scan button
+btnCodScan.addEventListener('click', () => openScannerFor('codTrackingNumber'));
+
+// Tracking number validation - show payment section when valid
+codTrackingInput.addEventListener('input', function() {
+  clearError('grpCodTracking');
+  const val = this.value.trim().toUpperCase();
+  if (val.length >= 10 && /[A-Z]{2,6}/.test(val) && /\d{4,}/.test(val)) {
+    showCodPaymentSection();
+  } else {
+    codPaymentSection.style.display = 'none';
+  }
+});
+
+function showCodPaymentSection() {
+  if (!codQrData) {
+    showToast('Please upload your eSewa QR code first', 'error', 4000);
+    return;
+  }
+  codQrDisplayImg.src = codQrData;
+  codPaymentSection.style.display = 'block';
+  codAmountInput.focus();
+}
+
+// Clear errors on input
+codAmountInput.addEventListener('input', () => clearError('grpCodAmount'));
+codTxnInput.addEventListener('input', function() {
+  clearError('grpCodTxn');
+  this.value = this.value.toUpperCase();
+});
+
+// Submit COD payment
+btnCodSubmit.addEventListener('click', async function() {
+  const profile = getRiderProfile();
+  if (!profile) { showToast('Please set up your rider profile on the Home page first', 'error', 4500); navigateTo('pageHome'); return; }
+
+  let v = true;
+  const trk = codTrackingInput.value.trim().toUpperCase();
+  if (!trk || trk.length < 10) { setError('grpCodTracking', 'Please enter a valid tracking number'); v = false; }
+
+  const amt = codAmountInput.value.trim();
+  if (!amt || isNaN(Number(amt)) || Number(amt) <= 0) { setError('grpCodAmount', 'Please enter the COD amount'); v = false; }
+
+  const txn = codTxnInput.value.trim().toUpperCase();
+  if (!txn || txn.length < 4) { setError('grpCodTxn', 'Please enter the eSewa transaction code'); v = false; }
+
+  if (!v) { showToast('Please fill in all required fields', 'error'); return; }
+
+  btnCodSubmit.disabled = true;
+  btnCodSubmit.innerHTML = '<span class="spinner"></span> Submitting\u2026';
+  try {
+    const payload = {
+      action: 'submitCodPayment',
+      hub: profile.hub,
+      riderName: profile.name,
+      trackingNumber: trk,
+      amount: Number(amt),
+      txnCode: txn,
+      riderEsewaQr: codQrData ? 'uploaded' : 'none'
+    };
+    const r = await fetch(APPS_SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (d.success) {
+      showToast(d.message || 'COD payment recorded!', 'success', 4000);
+      // Reset form
+      codTrackingInput.value = '';
+      codAmountInput.value = '';
+      codTxnInput.value = '';
+      codPaymentSection.style.display = 'none';
+    } else {
+      showToast(d.message || 'Submission failed.', 'error', 5000);
+    }
+  } catch(e) {
+    if (e.name === 'TypeError') showToast('Network error. Check your connection.', 'error', 5000);
+    else showToast('Something went wrong. Please try again.', 'error', 5000);
+  } finally {
+    btnCodSubmit.disabled = false;
+    btnCodSubmit.innerHTML = 'SUBMIT COD PAYMENT';
   }
 });
 </script>
