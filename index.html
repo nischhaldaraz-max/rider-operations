@@ -328,11 +328,13 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
     <div class="cod-qr-setup" id="codQrSetup">
       <div class="form-group" id="grpCodQr">
         <label>Your eSewa QR Code</label>
-        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">Upload once — customers will scan this to pay you.</p>
         <div class="cod-qr-upload-wrap">
           <input type="file" id="codQrInput" accept="image/*" style="display:none;">
           <button type="button" class="btn btn-secondary" id="btnCodQrUpload">&#x1F4F7; UPLOAD QR CODE</button>
           <div class="cod-qr-preview" id="codQrPreview"><img id="codQrImg" alt="Your eSewa QR"></div>
+          <div class="cod-qr-saved" id="codQrSaved" style="display:none;">
+            <span style="color:var(--success);font-weight:600;">&#x2705; eSewa QR saved</span>
+          </div>
           <button type="button" class="cod-qr-change" id="btnCodQrChange">Change QR</button>
         </div>
         <div class="error-msg">Please upload your eSewa QR code</div>
@@ -1275,27 +1277,38 @@ btnOdoSubmit.addEventListener('click', async function() {
 // ========== COD PAYMENT (eSewa) MODULE ==========
 const COD_QR_KEY = 'codEsewaQr';
 const codQrInput = $('codQrInput'), codQrPreview = $('codQrPreview'), codQrImg = $('codQrImg');
+const codQrSaved = $('codQrSaved');
 const btnCodQrUpload = $('btnCodQrUpload'), btnCodQrChange = $('btnCodQrChange');
 const codTrackingInput = $('codTrackingNumber'), btnCodScan = $('btnCodScan');
 const codPaymentSection = $('codPaymentSection'), codQrDisplayImg = $('codQrDisplayImg');
 const codAmountInput = $('codAmount'), codTxnInput = $('codTxnCode'), btnCodSubmit = $('btnCodSubmit');
 let codQrData = null;
 
+function showCodQrSaved() {
+  codQrPreview.classList.remove('has-image');
+  codQrPreview.style.display = 'none';
+  codQrSaved.style.display = 'block';
+  btnCodQrUpload.style.display = 'none';
+  btnCodQrChange.classList.add('visible');
+}
+
+function showCodQrUploadArea() {
+  codQrPreview.style.display = '';
+  codQrPreview.classList.remove('has-image');
+  codQrSaved.style.display = 'none';
+  btnCodQrUpload.style.display = '';
+  btnCodQrChange.classList.remove('visible');
+}
+
 // Load saved QR on page init
 function loadCodQr() {
   const saved = localStorage.getItem(COD_QR_KEY);
   if (saved) {
     codQrData = saved;
-    codQrImg.src = saved;
-    codQrPreview.classList.add('has-image');
-    btnCodQrUpload.style.display = 'none';
-    btnCodQrChange.classList.add('visible');
+    showCodQrSaved();
   } else {
     codQrData = null;
-    codQrImg.src = '';
-    codQrPreview.classList.remove('has-image');
-    btnCodQrUpload.style.display = '';
-    btnCodQrChange.classList.remove('visible');
+    showCodQrUploadArea();
   }
 }
 loadCodQr();
@@ -1310,7 +1323,6 @@ codQrInput.addEventListener('change', function() {
   const reader = new FileReader();
   reader.onload = function(e) {
     const dataUrl = e.target.result;
-    // Compress image
     const img = new Image();
     img.onload = function() {
       const canvas = document.createElement('canvas');
@@ -1324,11 +1336,8 @@ codQrInput.addEventListener('change', function() {
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       const compressed = canvas.toDataURL('image/jpeg', 0.85);
       codQrData = compressed;
-      codQrImg.src = compressed;
-      codQrPreview.classList.add('has-image');
-      btnCodQrUpload.style.display = 'none';
-      btnCodQrChange.classList.add('visible');
       localStorage.setItem(COD_QR_KEY, compressed);
+      showCodQrSaved();
       showToast('eSewa QR saved', 'success');
     };
     img.src = dataUrl;
