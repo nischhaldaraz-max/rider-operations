@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a73e8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Rider Operations</title>
 <script src="https://unpkg.com/@aspect-build/rules_lint@0.0.0-20240313-aspect-zxing-wasm/dist/zxing-wasm.min.js"
         onerror="console.warn('ZXing WASM CDN unavailable, fallback to BarcodeDetector')"></script>
@@ -1438,6 +1443,13 @@ btnCodSubmit.addEventListener('click', async function() {
     btnCodSubmit.innerHTML = 'SUBMIT COD PAYMENT';
   }
 });
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./service-worker.js')
+    .then(reg => console.log('SW registered, scope:', reg.scope))
+    .catch(err => console.warn('SW registration failed:', err));
+}
 </script>
 </body>
 </html>
