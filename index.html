@@ -98,6 +98,40 @@ html, body { min-height: 100%; min-height: 100dvh; font-family: -apple-system, B
 .btn-verify:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 .btn-verify.verified { background: var(--success); }
 .btn-verify.verified:hover { background: var(--success); }
+
+/* ── CX Messages Styles ── */
+.msg-list { list-style: none; }
+.msg-list-item { padding: 14px 16px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.15s; }
+.msg-list-item:hover, .msg-list-item:active { background: #f1f3f4; }
+.msg-list-item .msg-tn { font-weight: 600; font-size: 14px; color: var(--text); }
+.msg-list-item .msg-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+.msg-list-item .msg-status.s-new { background: #e3f2fd; color: #1976d2; }
+.msg-list-item .msg-status.s-cx { background: #fff3e0; color: #f57c00; }
+.msg-list-item .msg-status.s-rider { background: #e6f4ea; color: #0f9d58; }
+.msg-list-item .msg-status.s-resolved { background: #f3e5f5; color: #7b1fa2; }
+.msg-list-item .msg-preview { font-size: 12px; color: var(--text-secondary); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.msg-chat-view { display: none; }
+.msg-chat-view.active { display: flex; flex-direction: column; height: calc(100vh - 60px); }
+.msg-chat-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 56px; z-index: 50; }
+.msg-chat-header .msg-back-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--primary); padding: 4px; }
+.msg-chat-header .msg-chat-info { flex: 1; }
+.msg-chat-header .msg-chat-info h3 { font-size: 15px; font-weight: 600; }
+.msg-chat-header .msg-chat-info p { font-size: 12px; color: var(--text-secondary); }
+.msg-thread { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.msg-bubble { max-width: 80%; padding: 10px 14px; border-radius: 14px; position: relative; }
+.msg-bubble.cx { background: #e8f0fe; color: var(--text); align-self: flex-start; border-bottom-left-radius: 4px; }
+.msg-bubble.rider { background: var(--primary); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+.msg-bubble .msg-bubble-sender { font-size: 11px; font-weight: 600; margin-bottom: 3px; opacity: 0.7; }
+.msg-bubble .msg-bubble-text { font-size: 14px; line-height: 1.5; word-wrap: break-word; }
+.msg-bubble .msg-bubble-time { font-size: 10px; margin-top: 4px; opacity: 0.5; }
+.msg-input-area { display: flex; gap: 8px; padding: 12px 16px; background: var(--card); border-top: 1px solid var(--border); position: sticky; bottom: 0; }
+.msg-input-area input { flex: 1; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 20px; font-size: 15px; background: var(--bg); }
+.msg-input-area input:focus { outline: none; border-color: var(--primary); }
+.msg-input-area button { padding: 10px 18px; background: var(--primary); color: #fff; border: none; border-radius: 20px; font-weight: 600; font-size: 14px; cursor: pointer; }
+.msg-input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+.msg-empty { text-align: center; padding: 48px 20px; color: var(--text-secondary); }
+.msg-empty .msg-empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.3; }
+.msg-refresh-info { text-align: center; font-size: 11px; color: var(--text-secondary); padding: 4px; background: #e8f0fe; }
 .btn-reset { background: #e8eaed; color: var(--text); font-size: 14px; padding: 12px; margin-top: 10px; }
 .btn-reset:hover { background: #dadce0; }
 .search-select { position: relative; }
@@ -189,6 +223,7 @@ html, body { min-height: 100%; min-height: 100dvh; font-family: -apple-system, B
     <li data-page="pageOtp">&#x1F510; ATM OTP Verification</li>
     <li data-page="pageOdometer">&#x1F3CD;&#xFE0F; Rider Odometer</li>
     <li data-page="pageCod">&#x1F4B3; COD Payment (eSewa)</li>
+    <li data-page="pageMessages">&#x1F4AC; Messages <span class="badge" id="msgBadge" style="display:none;background:var(--error);color:#fff;">0</span></li>
   </ul>
 </nav>
 
@@ -385,6 +420,39 @@ html, body { min-height: 100%; min-height: 100dvh; font-family: -apple-system, B
 
         <button class="btn btn-submit" id="btnCodSubmit">SUBMIT COD PAYMENT</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MESSAGES PAGE ── -->
+<div class="page" id="pageMessages">
+  <!-- List View -->
+  <div id="msgListView">
+    <div class="card">
+      <h3>&#x1F4AC; CX Messages</h3>
+      <div class="msg-refresh-info">Auto-refresh every 10 seconds</div>
+      <ul class="msg-list" id="msgList">
+        <li class="msg-empty" id="msgEmpty">
+          <div class="msg-empty-icon">&#x1F4AC;</div>
+          <p>No messages yet</p>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Chat View (hidden by default) -->
+  <div class="msg-chat-view" id="msgChatView">
+    <div class="msg-chat-header">
+      <button class="msg-back-btn" id="msgBackBtn">&larr;</button>
+      <div class="msg-chat-info">
+        <h3 id="msgChatTracking">Tracking Number</h3>
+        <p id="msgChatStatus">Status</p>
+      </div>
+    </div>
+    <div class="msg-thread" id="msgThread"></div>
+    <div class="msg-input-area">
+      <input type="text" id="msgReplyInput" placeholder="Type your reply..." autocomplete="off">
+      <button id="msgSendBtn">Send</button>
     </div>
   </div>
 </div>
@@ -1443,6 +1511,237 @@ btnCodSubmit.addEventListener('click', async function() {
     btnCodSubmit.innerHTML = 'SUBMIT COD PAYMENT';
   }
 });
+
+// ═══════════════════════════════════════════════════════
+// CX MESSAGES MODULE
+// ═══════════════════════════════════════════════════════
+(function() {
+  const msgList = $('msgList');
+  const msgEmpty = $('msgEmpty');
+  const msgChatView = $('msgChatView');
+  const msgListView = $('msgListView');
+  const msgBackBtn = $('msgBackBtn');
+  const msgChatTracking = $('msgChatTracking');
+  const msgChatStatus = $('msgChatStatus');
+  const msgThread = $('msgThread');
+  const msgReplyInput = $('msgReplyInput');
+  const msgSendBtn = $('msgSendBtn');
+  const msgBadge = $('msgBadge');
+
+  let currentMsgTracking = null;
+  let msgRefreshTimer = null;
+  let msgAllData = null; // cached messages + tracking list
+
+  // Helper: API call to Apps Script
+  async function msgApiCall(payload) {
+    const r = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    return await r.json();
+  }
+
+  // Get rider profile
+  function getMsgProfile() {
+    const stored = localStorage.getItem(RIDER_PROFILE_KEY);
+    if (!stored) return null;
+    try { return JSON.parse(stored); } catch(e) { return null; }
+  }
+
+  // Load messages for current rider
+  async function loadMessages() {
+    const profile = getMsgProfile();
+    if (!profile || !profile.name) return;
+
+    try {
+      const data = await msgApiCall({ action: 'getMessages', riderName: profile.name });
+      if (!data.success) return;
+
+      msgAllData = data;
+      renderMsgList(data.trackingList || [], data.messages || []);
+      updateMsgBadge(data.trackingList || []);
+
+      // If chat is open, also refresh the thread
+      if (currentMsgTracking) {
+        const threadMsgs = (data.messages || []).filter(m => m.trackingNumber === currentMsgTracking);
+        renderMsgThread(threadMsgs);
+      }
+    } catch(e) {
+      console.warn('Messages load error:', e);
+    }
+  }
+
+  // Update badge count (parcels where CX replied = needs rider attention)
+  function updateMsgBadge(trackingList) {
+    const needsReply = trackingList.filter(t => t.status === 'CX Replied').length;
+    if (needsReply > 0) {
+      msgBadge.textContent = needsReply;
+      msgBadge.style.display = 'inline-block';
+    } else {
+      msgBadge.style.display = 'none';
+    }
+  }
+
+  // Render tracking list
+  function renderMsgList(trackingList, allMessages) {
+    if (!trackingList.length) {
+      msgList.innerHTML = '';
+      msgList.appendChild(msgEmpty);
+      msgEmpty.style.display = 'block';
+      return;
+    }
+
+    msgEmpty.style.display = 'none';
+
+    // Get last message preview for each tracking
+    const lastMsgByTracking = {};
+    for (const msg of allMessages) {
+      lastMsgByTracking[msg.trackingNumber] = msg;
+    }
+
+    msgList.innerHTML = trackingList.map(t => {
+      const statusClass = t.status === 'New' ? 's-new' : t.status === 'CX Replied' ? 's-cx' : t.status === 'Rider Replied' ? 's-rider' : 's-resolved';
+      const lastMsg = lastMsgByTracking[t.trackingNumber];
+      const preview = lastMsg ? lastMsg.messageText.substring(0, 50) + (lastMsg.messageText.length > 50 ? '...' : '') : '';
+
+      return `<li class="msg-list-item" data-tn="${t.trackingNumber}" data-status="${t.status}">
+        <div>
+          <div class="msg-tn">${t.trackingNumber}</div>
+          <div class="msg-preview">${preview}</div>
+        </div>
+        <span class="msg-status ${statusClass}">${t.status}</span>
+      </li>`;
+    }).join('');
+
+    // Add click handlers
+    msgList.querySelectorAll('.msg-list-item').forEach(li => {
+      li.addEventListener('click', () => openChat(li.dataset.tn, li.dataset.status));
+    });
+  }
+
+  // Open chat for a tracking number
+  function openChat(trackingNumber, status) {
+    currentMsgTracking = trackingNumber;
+    msgChatTracking.textContent = trackingNumber;
+    msgChatStatus.textContent = 'Status: ' + status;
+
+    // Show chat view, hide list
+    msgListView.style.display = 'none';
+    msgChatView.classList.add('active');
+
+    // Render messages
+    if (msgAllData && msgAllData.messages) {
+      const threadMsgs = msgAllData.messages.filter(m => m.trackingNumber === trackingNumber);
+      renderMsgThread(threadMsgs);
+    }
+
+    // Focus input
+    setTimeout(() => msgReplyInput.focus(), 300);
+  }
+
+  // Close chat, go back to list
+  function closeChat() {
+    currentMsgTracking = null;
+    msgChatView.classList.remove('active');
+    msgListView.style.display = 'block';
+    loadMessages(); // Refresh list
+  }
+
+  // Render message thread
+  function renderMsgThread(messages) {
+    if (!messages.length) {
+      msgThread.innerHTML = '<div class="msg-empty"><div class="msg-empty-icon">&#x1F4AC;</div><p>No messages yet</p></div>';
+      return;
+    }
+
+    msgThread.innerHTML = messages.map(m => {
+      const bubbleClass = m.senderType === 'CX' ? 'cx' : 'rider';
+      return `<div class="msg-bubble ${bubbleClass}">
+        <div class="msg-bubble-sender">${m.senderName}</div>
+        <div class="msg-bubble-text">${m.messageText}</div>
+        <div class="msg-bubble-time">${m.timestamp}</div>
+      </div>`;
+    }).join('');
+
+    // Scroll to bottom
+    msgThread.scrollTop = msgThread.scrollHeight;
+  }
+
+  // Send reply
+  async function sendMsgReply() {
+    const text = msgReplyInput.value.trim();
+    if (!text || !currentMsgTracking) return;
+
+    const profile = getMsgProfile();
+    if (!profile) {
+      showToast('Please set up your rider profile first', 'error');
+      return;
+    }
+
+    msgSendBtn.disabled = true;
+    msgSendBtn.textContent = '...';
+
+    try {
+      const data = await msgApiCall({
+        action: 'sendMessage',
+        trackingNumber: currentMsgTracking,
+        riderName: profile.name,
+        senderType: 'Rider',
+        senderName: profile.name,
+        messageText: text
+      });
+
+      if (data.success) {
+        msgReplyInput.value = '';
+        showToast('Reply sent', 'success');
+
+        // Reload messages
+        await loadMessages();
+        msgChatStatus.textContent = 'Status: ' + (data.status || 'Rider Replied');
+      } else {
+        showToast(data.message || 'Failed to send', 'error');
+      }
+    } catch(e) {
+      showToast('Network error. Try again.', 'error');
+    } finally {
+      msgSendBtn.disabled = false;
+      msgSendBtn.textContent = 'Send';
+    }
+  }
+
+  // Event listeners
+  msgBackBtn.addEventListener('click', closeChat);
+  msgSendBtn.addEventListener('click', sendMsgReply);
+  msgReplyInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); sendMsgReply(); }
+  });
+
+  // Start auto-refresh when Messages page is active
+  function startMsgRefresh() {
+    loadMessages();
+    if (msgRefreshTimer) clearInterval(msgRefreshTimer);
+    msgRefreshTimer = setInterval(loadMessages, 10000); // Every 10 seconds
+  }
+
+  function stopMsgRefresh() {
+    if (msgRefreshTimer) { clearInterval(msgRefreshTimer); msgRefreshTimer = null; }
+  }
+
+  // Hook into navigation to start/stop refresh
+  const origNavigateTo = window.navigateTo;
+  window.navigateTo = function(pid) {
+    origNavigateTo(pid);
+    if (pid === 'pageMessages') {
+      startMsgRefresh();
+    } else {
+      stopMsgRefresh();
+    }
+  };
+
+  // Also expose for initial load
+  window.loadMessages = loadMessages;
+})();
 </script>
 <script>
 if ('serviceWorker' in navigator) {
