@@ -133,7 +133,11 @@ html, body { min-height: 100%; min-height: 100dvh; font-family: -apple-system, B
 .msg-input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
 .msg-empty { text-align: center; padding: 48px 20px; color: var(--text-secondary); }
 .msg-empty .msg-empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.3; }
-.msg-refresh-info { text-align: center; font-size: 11px; color: var(--text-secondary); padding: 4px; background: #e8f0fe; }
+.msg-refresh-bar { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.msg-refresh-btn { background: #e8f0fe; color: #1a73e8; border: none; padding: 6px 14px; border-radius: 16px; font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+.msg-refresh-btn:active { background: #d2e3fc; }
+.msg-refresh-btn.spinning { pointer-events: none; opacity: 0.6; }
+.msg-last-update { font-size: 11px; color: var(--text-secondary); }
 .btn-reset { background: #e8eaed; color: var(--text); font-size: 14px; padding: 12px; margin-top: 10px; }
 .btn-reset:hover { background: #dadce0; }
 .search-select { position: relative; }
@@ -432,7 +436,10 @@ html, body { min-height: 100%; min-height: 100dvh; font-family: -apple-system, B
   <div id="msgListView">
     <div class="card">
       <h3>&#x1F4AC; CX Messages</h3>
-      <div class="msg-refresh-info">Auto-refresh every 10 seconds</div>
+      <div class="msg-refresh-bar">
+        <button class="msg-refresh-btn" id="msgRefreshBtn" onclick="loadMessages()">&#x21BB; Refresh</button>
+        <span class="msg-last-update" id="msgLastUpdate"></span>
+      </div>
       <ul class="msg-list" id="msgList">
         <li class="msg-empty" id="msgEmpty">
           <div class="msg-empty-icon">&#x1F4AC;</div>
@@ -641,7 +648,7 @@ document.addEventListener('click', function(e) { if (!reasonSelectWrap.contains(
 
 function openMenu() { menuOverlay.classList.add('open'); sideMenu.classList.add('open'); }
 function closeMenu() { menuOverlay.classList.remove('open'); sideMenu.classList.remove('open'); }
-function navigateTo(pid) { pages.forEach(p => p.classList.remove('active')); const t = $(pid); if (t) t.classList.add('active'); menuItems.forEach(li => li.classList.toggle('active', li.dataset.page === pid)); closeMenu(); if (pid === 'pageOdometer') showOdoProfile(); }
+function navigateTo(pid) { pages.forEach(p => p.classList.remove('active')); const t = $(pid); if (t) t.classList.add('active'); menuItems.forEach(li => li.classList.toggle('active', li.dataset.page === pid)); closeMenu(); if (pid === 'pageOdometer') showOdoProfile(); localStorage.setItem('currentPage', pid); }
 $('btnMenuOpen').addEventListener('click', openMenu);
 $('btnMenuClose').addEventListener('click', closeMenu);
 menuOverlay.addEventListener('click', e => { if (e.target === menuOverlay) closeMenu(); });
@@ -657,6 +664,17 @@ hubSelect.addEventListener('change', function() { clearError('grpHub'); updateRi
 riderSelect.addEventListener('change', () => clearError('grpRiderName'));
 btnSaveProfile.addEventListener('click', saveRiderProfile);
 btnRefreshProfiles.addEventListener('click', async function() { var savedHub = hubSelect.value || (getRiderProfile() || {}).hub || ''; await fetchRiderProfiles(); hubSelect.value = savedHub; updateRiderDropdown(savedHub); var p = getRiderProfile(); if (p && savedHub === p.hub) riderSelect.value = p.name || ''; showToast('Rider list refreshed','success'); });
+
+// Restore last visited page on reload (if profile is set)
+(function() {
+  var profile = getRiderProfile();
+  var savedPage = localStorage.getItem('currentPage');
+  if (profile && savedPage && savedPage !== 'pageHome') {
+    navigateTo(savedPage);
+  }
+  // Restore profile greeting
+  if (profile) { homeGreeting.textContent = 'Welcome, ' + profile.name; profileSavedHint.style.display = 'block'; }
+})();
 
 // ========== SCANNER MODULE - FULLY OPTIMIZED ==========
 let scannerStream = null, scannerAnimFrame = null, scannerActive = false, zxingReader = null;
@@ -1557,6 +1575,10 @@ btnCodSubmit.addEventListener('click', async function() {
     const profile = getMsgProfile();
     if (!profile || !profile.name) return;
 
+    // Show refreshing state on button
+    const btn = document.getElementById('msgRefreshBtn');
+    if (btn) btn.classList.add('spinning');
+
     try {
       // Fetch CX messages and recent scans in parallel
       const [msgData, scanData] = await Promise.all([
@@ -1585,6 +1607,12 @@ btnCodSubmit.addEventListener('click', async function() {
       renderMsgList(mergedList, msgData.messages || []);
       updateMsgBadge(msgData.trackingList || []);
 
+      // Update last-refreshed timestamp
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const tsEl = document.getElementById('msgLastUpdate');
+      if (tsEl) tsEl.textContent = 'Updated ' + timeStr;
+
       // If chat is open, also refresh the thread
       if (currentMsgTracking) {
         const threadMsgs = (msgData.messages || []).filter(m => m.trackingNumber === currentMsgTracking);
@@ -1592,6 +1620,8 @@ btnCodSubmit.addEventListener('click', async function() {
       }
     } catch(e) {
       console.warn('Messages load error:', e);
+    } finally {
+      if (btn) btn.classList.remove('spinning');
     }
   }
 
