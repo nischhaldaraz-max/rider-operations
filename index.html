@@ -109,6 +109,7 @@ html, body { min-height: 100%; min-height: 100dvh; font-family: -apple-system, B
 .msg-list-item .msg-status.s-new { background: #e3f2fd; color: #1976d2; }
 .msg-list-item .msg-status.s-cx { background: #fff3e0; color: #f57c00; }
 .msg-list-item .msg-status.s-rider { background: #e6f4ea; color: #0f9d58; }
+.msg-list-item .msg-status.s-scanned { background: #f0f0f0; color: #888; }
 .msg-list-item .msg-status.s-resolved { background: #f3e5f5; color: #7b1fa2; }
 .msg-list-item .msg-preview { font-size: 12px; color: var(--text-secondary); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
 .msg-chat-view { display: none; }
@@ -1551,21 +1552,42 @@ btnCodSubmit.addEventListener('click', async function() {
   }
 
   // Load messages filtered to packages this rider has scanned/confirmed
+  // Also loads recent scans so they appear in the list even without CX messages
   async function loadMessages() {
     const profile = getMsgProfile();
     if (!profile || !profile.name) return;
 
     try {
-      const data = await msgApiCall({ action: 'getMessages', riderName: profile.name });
-      if (!data.success) return;
+      // Fetch CX messages and recent scans in parallel
+      const [msgData, scanData] = await Promise.all([
+        msgApiCall({ action: 'getMessages', riderName: profile.name }),
+        msgApiCall({ action: 'getRiderScans', riderName: profile.name })
+      ]);
+      if (!msgData.success) return;
 
-      msgAllData = data;
-      renderMsgList(data.trackingList || [], data.messages || []);
-      updateMsgBadge(data.trackingList || []);
+      // Merge recent scans into the tracking list (deduplicate by tracking number)
+      const trackingSet = new Set((msgData.trackingList || []).map(t => t.trackingNumber));
+      const mergedList = [...(msgData.trackingList || [])];
+
+      for (const scan of (scanData.scans || [])) {
+        if (!trackingSet.has(scan.trackingNumber)) {
+          mergedList.push({
+            trackingNumber: scan.trackingNumber,
+            status: 'Scanned',
+            riderName: profile.name,
+            isScanOnly: true
+          });
+          trackingSet.add(scan.trackingNumber);
+        }
+      }
+
+      msgAllData = msgData;
+      renderMsgList(mergedList, msgData.messages || []);
+      updateMsgBadge(msgData.trackingList || []);
 
       // If chat is open, also refresh the thread
       if (currentMsgTracking) {
-        const threadMsgs = (data.messages || []).filter(m => m.trackingNumber === currentMsgTracking);
+        const threadMsgs = (msgData.messages || []).filter(m => m.trackingNumber === currentMsgTracking);
         renderMsgThread(threadMsgs);
       }
     } catch(e) {
@@ -1602,9 +1624,9 @@ btnCodSubmit.addEventListener('click', async function() {
     }
 
     msgList.innerHTML = trackingList.map(t => {
-      const statusClass = t.status === 'New' ? 's-new' : t.status === 'CX Replied' ? 's-cx' : t.status === 'Rider Replied' ? 's-rider' : 's-resolved';
+      const statusClass = t.status === 'New' ? 's-new' : t.status === 'CX Replied' ? 's-cx' : t.status === 'Rider Replied' ? 's-rider' : t.isScanOnly ? 's-scanned' : 's-resolved';
       const lastMsg = lastMsgByTracking[t.trackingNumber];
-      const preview = lastMsg ? lastMsg.messageText.substring(0, 50) + (lastMsg.messageText.length > 50 ? '...' : '') : '';
+      const preview = lastMsg ? lastMsg.messageText.substring(0, 50) + (lastMsg.messageText.length > 50 ? '...' : '') : (t.isScanOnly ? 'No messages yet' : '');
       const riderInfo = t.riderName ? '<div class="msg-rider-name">Rider: ' + t.riderName + '</div>' : '';
 
       return `<li class="msg-list-item" data-tn="${t.trackingNumber}" data-status="${t.status}">
