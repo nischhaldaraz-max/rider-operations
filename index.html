@@ -104,6 +104,7 @@ html, body { min-height: 100%; min-height: 100dvh; font-family: -apple-system, B
 .msg-list-item { padding: 14px 16px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.15s; }
 .msg-list-item:hover, .msg-list-item:active { background: #f1f3f4; }
 .msg-list-item .msg-tn { font-weight: 600; font-size: 14px; color: var(--text); }
+.msg-list-item .msg-rider-name { font-size: 12px; color: #667781; margin-top: 2px; }
 .msg-list-item .msg-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
 .msg-list-item .msg-status.s-new { background: #e3f2fd; color: #1976d2; }
 .msg-list-item .msg-status.s-cx { background: #fff3e0; color: #f57c00; }
@@ -1549,7 +1550,7 @@ btnCodSubmit.addEventListener('click', async function() {
     try { return JSON.parse(stored); } catch(e) { return null; }
   }
 
-  // Load messages for current rider
+  // Load messages filtered to packages this rider has scanned/confirmed
   async function loadMessages() {
     const profile = getMsgProfile();
     if (!profile || !profile.name) return;
@@ -1604,10 +1605,12 @@ btnCodSubmit.addEventListener('click', async function() {
       const statusClass = t.status === 'New' ? 's-new' : t.status === 'CX Replied' ? 's-cx' : t.status === 'Rider Replied' ? 's-rider' : 's-resolved';
       const lastMsg = lastMsgByTracking[t.trackingNumber];
       const preview = lastMsg ? lastMsg.messageText.substring(0, 50) + (lastMsg.messageText.length > 50 ? '...' : '') : '';
+      const riderInfo = t.riderName ? '<div class="msg-rider-name">Rider: ' + t.riderName + '</div>' : '';
 
       return `<li class="msg-list-item" data-tn="${t.trackingNumber}" data-status="${t.status}">
         <div>
           <div class="msg-tn">${t.trackingNumber}</div>
+          ${riderInfo}
           <div class="msg-preview">${preview}</div>
         </div>
         <span class="msg-status ${statusClass}">${t.status}</span>
